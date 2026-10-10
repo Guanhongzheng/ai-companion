@@ -110,6 +110,24 @@ async def ingest_text(db: OrmSession, text: str, session_id: str | None = None) 
     return saved
 
 
+def _log_task_failure(name: str):
+    """后台任务的失败回调。
+
+    ⚠️ ``add_done_callback`` 在任务**成功**时也会触发，所以不能无条件打 error ——
+    之前这么写导致每次启动都误报「种子索引失败」，而索引其实一直是好的。
+    """
+
+    def _callback(task) -> None:
+        if task.cancelled():
+            logger.warning("%s 被取消（通常是进程退出）", name)
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("%s：%s", name, exc)
+
+    return _callback
+
+
 def ensure_seed_memories(db: OrmSession) -> None:
     """首次启动灌几条示例记忆。"""
     if db.execute(select(MemoryModel.id).limit(1)).first():
@@ -160,7 +178,7 @@ def _schedule_seed_index() -> None:
         return
 
     task = loop.create_task(_index())
-    task.add_done_callback(lambda t: logger.error("种子索引失败", exc_info=t.exception()))
+    task.add_done_callback(_log_task_failure("种子索引"))
 
 
 # ---------------------------------------------------------------- 读取
@@ -320,7 +338,7 @@ def _schedule_index(rows: list[MemoryModel], plains: list[str]) -> None:
         asyncio.run(_run())
         return
     task = loop.create_task(_run())
-    task.add_done_callback(lambda t: logger.error("记忆索引补建失败", exc_info=t.exception()))
+    task.add_done_callback(_log_task_failure("记忆索引补建"))
 
 
 def stats(db: OrmSession) -> dict[str, object]:
