@@ -1,0 +1,36 @@
+diff --git a/dist/trace/report/to-json.js b/dist/trace/report/to-json.js
+index b92e5c939cb4d4b623ce91c7ea362a4b84381fe6..2c8da27f9fda580e8c4c4ee1c8c302263465d5bf 100644
+--- a/dist/trace/report/to-json.js
++++ b/dist/trace/report/to-json.js
+@@ -60,6 +60,7 @@ function batcher(reportEvents) {
+     };
+ }
+ let writeStream;
++let writeStreamPromise;
+ let traceId;
+ let batch;
+ const writeStreamOptions = {
+@@ -127,12 +128,17 @@ const reportToLocalHost = (event)=>{
+     if (!batch) {
+         batch = batcher(async (events)=>{
+             if (!writeStream) {
+-                await _fs.default.promises.mkdir(distDir, {
+-                    recursive: true
+-                });
+-                const file = _path.default.join(distDir, "trace");
+-                writeStream = new RotatingWriteStream(file, // Development is limited to 50MB, production is unlimited
+-                phase === _constants.PHASE_DEVELOPMENT_SERVER ? 52428800 : Infinity);
++                if (!writeStreamPromise) {
++                    writeStreamPromise = (async ()=>{
++                        await _fs.default.promises.mkdir(distDir, {
++                            recursive: true
++                        });
++                        const file = _path.default.join(distDir, "trace");
++                        writeStream = new RotatingWriteStream(file, // Development is limited to 50MB, production is unlimited
++                        phase === _constants.PHASE_DEVELOPMENT_SERVER ? 52428800 : Infinity);
++                    })();
++                }
++                await writeStreamPromise;
+             }
+             const eventsJson = JSON.stringify(events);
+             try {

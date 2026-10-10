@@ -1,0 +1,76 @@
+# ai-companion 本地开发编排
+# 用法：
+#   docker compose up -d                     只起 web + api
+#   docker compose --profile infra up -d     额外起 postgres + chroma
+#   docker compose logs -f api
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    container_name: aicompanion-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: aicompanion-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./apps/api/.env
+    environment:
+      - DATABASE_URL=sqlite:///./data/sqlite/app.db
+      - CHROMA_PERSIST_DIR=./data/chroma
+      - LOCAL_STORAGE_DIR=./data/uploads
+    volumes:
+      - ./apps/api:/app
+      - ./data:/app/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: aicompanion-postgres
+    profiles: ["infra"]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ai
+      POSTGRES_PASSWORD: ai
+      POSTGRES_DB: ai_companion
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: aicompanion-chroma
+    profiles: ["infra"]
+    ports:
+      - "8001:8000"
+    volumes:
+      - chromadata:/chroma/chroma
+    restart: unless-stopped
+
+  music-api:
+    image: ghcr.io/mos9527/neteasecloudmusicapi:latest
+    container_name: aicompanion-music
+    profiles: ["infra"]
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  chromadata:

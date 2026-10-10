@@ -1,0 +1,45 @@
+# ============================================================
+# ai-companion API · 核心运行依赖
+# 安装：pip install -r requirements.txt
+# 装了这套就能起 FastAPI 服务、调云端大模型、读写数据库
+#
+# 另外两个可选文件：
+#   requirements-ml.txt   本地向量模型（torch 系，约 2-3GB，需要时再装）
+#   requirements-dev.txt  测试与代码检查工具
+# ============================================================
+
+# ---- Web 框架 ----
+fastapi>=0.115.0,<0.116.0
+uvicorn[standard]>=0.30.0,<0.31.0
+python-multipart>=0.0.9
+sse-starlette>=2.1.0
+
+# ---- 配置与校验 ----
+pydantic>=2.8.0,<3.0.0
+pydantic-settings>=2.4.0
+python-dotenv>=1.0.1
+
+# ---- 模型编排与路由 ----
+langgraph>=0.2.0
+litellm>=1.44.0
+openai>=1.40.0
+
+# ---- 向量库 ----
+chromadb>=0.5.0
+# milvus-lite>=2.4.0            # 换 Milvus Lite 时打开
+
+# ---- 数据库 ----
+sqlalchemy>=2.0.30
+alembic>=1.13.2
+aiosqlite>=0.20.0
+# psycopg[binary]>=3.2.0        # 换 PostgreSQL 时打开
+
+# ---- 对象存储 ----
+minio>=7.2.7
+aiofiles>=23.2.1
+
+# ---- HTTP ----
+httpx>=0.27.0
+
+# ---- 安全 ----
+cryptography>=43.0.0

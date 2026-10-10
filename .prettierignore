@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+dist
+build
+.turbo
+data
+coverage
+pnpm-lock.yaml
+*.md
+!README.md
+!docs/**/*.md

@@ -1,0 +1,99 @@
+# ============================================================
+# ai-companion · .gitignore
+# ============================================================
+
+# ---------- Node / pnpm ----------
+node_modules/
+.pnpm-store/
+.pnp
+.pnp.js
+.yarn/
+
+# ---------- Next.js / 构建产物 ----------
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+.turbo/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---------- 环境变量与密钥（绝不入库）----------
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# ---------- 本地运行时数据（RAG / 上传 / 数据库 / 对象存储）----------
+/data/uploads/*
+!/data/uploads/.gitkeep
+/data/chroma/*
+!/data/chroma/.gitkeep
+/data/sqlite/*
+!/data/sqlite/.gitkeep
+/data/minio/*
+!/data/minio/.gitkeep
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# ---------- 日志 ----------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- 测试与覆盖率 ----------
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# ---------- 编辑器 / 操作系统 ----------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- AI 助手本地数据 ----------
+# AI 工具的会话记忆 / 缓存，含个人笔记，不入库
+.workbuddy/
+.claude/
+.cursor/
+.aider*
+
+# ---------- 杂项 ----------
+*.local
+*.pid
+*.seed
+.eslintcache

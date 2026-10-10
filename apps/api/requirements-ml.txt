@@ -1,0 +1,18 @@
+# ============================================================
+# ai-companion API · 本地向量模型依赖（可选，体积大）
+# 安装：pip install -r requirements-ml.txt
+#
+# 什么时候需要装：
+#   1. 不想把对话内容发给云端 embedding 接口（隐私优先）
+#   2. 想离线跑 RAG
+#   3. 用本地 Ollama 替代云端大模型
+#
+# 注意：会一并安装 PyTorch，Windows 上约 2-3GB，首次安装较慢。
+# 首次使用某个模型时还会从 HuggingFace 下载权重（bge-m3 约 2.2GB）。
+# 不想装的话，把 .env 里的 DEFAULT_EMBEDDING_MODEL / DEFAULT_RERANK_MODEL
+# 指向云端 API（如 DashScope 的 text-embedding-v3）即可。
+# ============================================================
+
+sentence-transformers>=3.0.0
+transformers>=4.42.0
+torch>=2.3.0
