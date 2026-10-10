@@ -64,11 +64,23 @@ services:
     restart: unless-stopped
 
   music-api:
-    image: ghcr.io/mos9527/neteasecloudmusicapi:latest
+    # NeteaseCloudMusicApi Enhanced 官方推荐的 Docker 镜像
+    image: moefurina/ncm-api:latest
     container_name: aicompanion-music
     profiles: ["infra"]
     ports:
       - "3001:3000"
+    environment:
+      # 容器内的 request 库会读取宿主机传进来的代理变量，
+      # 指向不可用的代理会导致所有请求失败，这里必须显式清空
+      http_proxy: ""
+      https_proxy: ""
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      no_proxy: ""
+      NO_PROXY: ""
+      # 允许浏览器跨域直连（前端在 localhost:3000）
+      CORS_ALLOW_ORIGIN: "*"
     restart: unless-stopped
 
 volumes:

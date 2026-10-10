@@ -35,6 +35,27 @@ interface MusicState {
 /** 复用同一个 audio 元素，切歌不重建（重建会导致 Web Audio source 失效） */
 let sharedAudio: HTMLAudioElement | null = null;
 
+const SERVICE_DOWN_MESSAGE =
+  `音乐服务未启动（${MUSIC_API_BASE_URL}）。两种启动方式：` +
+  `① docker compose --profile infra up -d music-api` +
+  `  ② 用 Node 直接跑 netease-cloud-music-api。` +
+  `音乐是可选功能，不影响对话与情绪壁纸。`;
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 浏览器对「连不上」「被 CORS 拦」「混合内容」一律抛 TypeError: Failed to fetch，
+ * 不带任何原因。这类情况要单独识别，否则会把无信息量的原文暴露给用户。
+ */
+function isNetworkError(error: unknown): boolean {
+  return (
+    error instanceof TypeError &&
+    /failed to fetch|networkerror|load failed/i.test(error.message)
+  );
+}
+
 function ensureAudio(): HTMLAudioElement {
   if (sharedAudio) return sharedAudio;
   sharedAudio = new Audio();
@@ -63,9 +84,7 @@ export const useMusicStore = create<MusicState>()((set, get) => ({
     const ok = await musicApi.health();
     set({ available: ok });
     if (!ok) {
-      set({
-        error: `音乐服务未启动。执行 docker compose --profile infra up -d music-api 后重试（地址 ${MUSIC_API_BASE_URL}）。`,
-      });
+      set({ error: SERVICE_DOWN_MESSAGE });
     }
   },
 
@@ -83,7 +102,7 @@ export const useMusicStore = create<MusicState>()((set, get) => ({
       set({
         available: false,
         tracks: [],
-        error: `音乐服务未启动或请求失败：${error instanceof Error ? error.message : String(error)}`,
+        error: isNetworkError(error) ? SERVICE_DOWN_MESSAGE : `音乐请求失败：${describe(error)}`,
       });
     } finally {
       set({ loading: false });
@@ -112,7 +131,12 @@ export const useMusicStore = create<MusicState>()((set, get) => ({
       await audio.play();
       set({ audioElement: audio, playing: true });
     } catch (error) {
-      set({ error: `播放失败：${error instanceof Error ? error.message : String(error)}` });
+      if (isNetworkError(error)) {
+        set({ available: false, error: SERVICE_DOWN_MESSAGE });
+        return;
+      }
+      // play() 被浏览器拒绝通常是自动播放策略，需要用户手势
+      set({ error: `播放失败：${describe(error)}。若浏览器拦截了自动播放，请再点一次播放键。` });
     } finally {
       set({ loading: false });
     }
