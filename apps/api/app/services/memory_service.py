@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session as OrmSession
 
 from app.core import crypto
 from app.core.config import settings
-from app.memory.embedding import get_embedder
+from app.memory.embedding import embed_query_with_fallback, get_embedder
 from app.memory.extractor import MEMORY_TYPES, extract
 from app.memory.retriever import format_for_prompt, retrieve
 from app.memory.store import get_store
@@ -69,8 +69,7 @@ async def add_memory(
             db.commit()
         return hit  # type: ignore[return-value]
 
-    embedder = get_embedder()
-    vector = await embedder.embed_query(content)
+    vector = await embed_query_with_fallback(content)
 
     memory = MemoryModel(
         id=_new_id(),
@@ -219,8 +218,7 @@ async def update_memory(
         plain = content.strip()
         memory.content = crypto.encrypt(plain)
         memory.encrypted = crypto.is_enabled()
-        embedder = get_embedder()
-        vector = await embedder.embed_query(plain)
+        vector = await embed_query_with_fallback(plain)
         get_store().upsert([memory.id], [vector], [plain])
 
     if type is not None and type in MEMORY_TYPES:

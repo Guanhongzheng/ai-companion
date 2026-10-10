@@ -18,15 +18,25 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"
 # Chroma 默认落在项目 data/ 下，测试时改到临时目录，别污染开发环境
 os.environ["CHROMA_PERSIST_DIR"] = _TEST_CHROMA.as_posix()
 os.environ["LOCAL_STORAGE_DIR"] = _TEST_UPLOADS.as_posix()
-# 保证测试跑在「无 Key 降级」这条路径上，不依赖开发者的本地 .env
+
+# 测试必须可重复：**清空所有模型 Key 与 Ollama 地址**，强制走 mock 分支。
+# 否则开发者本机配了真 .env 时，测试会真的去调模型并因 mocked=False 而挂掉。
+#
+# ⚠️ 必须设为空字符串而不是 pop：pop 掉环境变量后，pydantic-settings 会
+# 转而从 .env 文件里读，反而拿到了真 Key。空字符串才能真正覆盖 .env。
 for _key in (
-    "OPENAI_API_KEY",
     "DEEPSEEK_API_KEY",
     "DASHSCOPE_API_KEY",
+    "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
+    "SILICONFLOW_API_KEY",
+    "MOONSHOT_API_KEY",
+    "ZHIPUAI_API_KEY",
+    "VOLCENGINE_ACCESS_KEY",
+    "OLLAMA_BASE_URL",
 ):
-    os.environ.pop(_key, None)
+    os.environ[_key] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

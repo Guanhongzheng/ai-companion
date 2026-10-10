@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass
 
 from app.core.config import settings
-from app.memory.embedding import get_embedder
+from app.memory.embedding import embed_query_with_fallback
 from app.memory.store import get_store
 
 logger = logging.getLogger(__name__)
@@ -109,8 +109,7 @@ async def retrieve(
     recall_k = recall_k or settings.memory_recall_k
     top_n = top_n if top_n is not None else settings.memory_top_n
 
-    embedder = get_embedder()
-    query_vec = await embedder.embed_query(text)
+    query_vec = await embed_query_with_fallback(text)
     candidates = get_store().query(query_vec, recall_k)
     if not candidates:
         return []

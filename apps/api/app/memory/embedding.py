@@ -218,6 +218,27 @@ def _has_any_model_key() -> bool:
     )
 
 
+#: 支持云端 Embedding 的 provider -> 对应的环境变量
+_EMBEDDING_ENV_KEYS = {
+    "siliconflow": lambda: settings.siliconflow_api_key,
+    "dashscope": lambda: settings.dashscope_api_key,
+    "openai": lambda: settings.openai_api_key,
+}
+
+
+def cloud_embedding_usable(model: str | None = None) -> bool:
+    """云端向量化到底能不能用。
+
+    **只看「有没有任意 Key」是错的**：配了 DeepSeek 的 Key，但默认 embedding
+    模型是 bge-m3（走硅基流动），调用必然失败。这个函数确保 provider 与
+    该provider 的 Key 真的配上了，否则老老实实退回哈希实现。
+    """
+    target = model or settings.default_embedding_model
+    provider = _with_provider(target).split("/", 1)[0]
+    getter = _EMBEDDING_ENV_KEYS.get(provider)
+    return bool(getter and getter())
+
+
 def _select_embedder() -> Embedder:
     """按优先级探测可用实现，每实现失败就降级到下一个。"""
     forced = (settings.memory_embedding_provider or "").strip().lower()
@@ -229,7 +250,12 @@ def _select_embedder() -> Embedder:
             if kind == "sentence-transformers":
                 embedder: Embedder = SentenceTransformerEmbedder()
             elif kind == "cloud":
-                if not _has_any_model_key():
+                if not cloud_embedding_usable():
+                    logger.info(
+                        "未配置 %s 所需的 Key（当前只有对话模型的 Key），"
+                        "记忆向量化退回哈希实现",
+                        _with_provider(settings.default_embedding_model).split("/", 1)[0],
+                    )
                     continue
                 embedder = CloudEmbedder()
             else:
@@ -243,6 +269,55 @@ def _select_embedder() -> Embedder:
 
     logger.warning("所有向量化实现都不可用，降级为哈希实现")
     return HashingEmbedder()
+
+
+async def embed_with_fallback(texts: Sequence[str]) -> list[list[float]]:
+    """向量化文档，云端不可用时自动降级到哈希实现。
+
+    为什么需要这层兜底：``get_embedder`` 的判断基于「配置看起来对不对」，
+    但 Key 可能过期、可能欠费、模型名可能写错，这些只有真正调用时才知道。
+    记忆静默失效是很糟糕的体验 —— 用户会以为「AI 怎么不记得我了」。
+
+    降级时必须**清空向量库**：不同实现的向量维度可能不同，
+    混在一起会让检索结果彻底失真。库里数据丢失不影响用户，
+    记忆正文都在 SQLite 里，下次启动的 ``sync_vector_store`` 会重建索引。
+    """
+    global _cached
+    embedder = get_embedder()
+    try:
+        return await embedder.embed_documents(texts)
+    except Exception as exc:
+        if isinstance(embedder, HashingEmbedder):
+            raise
+        logger.warning("云端向量化失败（%s），降级到哈希实现并重建向量库", exc)
+        _cached = HashingEmbedder()
+        try:
+            from app.memory.store import get_store
+
+            get_store().delete_all()
+        except Exception:
+            logger.warning("清空向量库失败，稍后由 sync_vector_store 修复")
+        return await _cached.embed_documents(texts)
+
+
+async def embed_query_with_fallback(text: str) -> list[float]:
+    """查询向量化，语义同上。"""
+    global _cached
+    embedder = get_embedder()
+    try:
+        return await embedder.embed_query(text)
+    except Exception as exc:
+        if isinstance(embedder, HashingEmbedder):
+            raise
+        logger.warning("云端向量化失败（%s），降级到哈希实现", exc)
+        _cached = HashingEmbedder()
+        try:
+            from app.memory.store import get_store
+
+            get_store().delete_all()
+        except Exception:
+            pass
+        return await _cached.embed_query(text)
 
 
 def reset_embedder() -> None:

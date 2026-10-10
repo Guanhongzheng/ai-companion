@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
+    siliconflow_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     allow_user_provided_keys: bool = True
 
