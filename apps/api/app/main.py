@@ -46,7 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix=settings.api_prefix)
 
 
 @app.get("/health", tags=["system"], summary="健康检查")

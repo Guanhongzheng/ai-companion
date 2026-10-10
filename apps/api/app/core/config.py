@@ -45,6 +45,18 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/sqlite/app.db"
     storage_backend: str = "local"
     local_storage_dir: str = "./data/uploads"
+    #: API 路由前缀，生成附件 URL 时要用，main.py 也从这里取
+    api_prefix: str = "/api/v1"
+
+    # ---- 多模态 ----
+    #: 单张图片大小上限（MB）
+    max_image_mb: int = 10
+    #: 单段音频大小上限（MB）
+    max_audio_mb: int = 25
+    #: 视觉理解使用的模型，不配则用对话模型
+    vision_model: str = ""
+    #: 火山引擎（豆包）语音识别 Key，可选
+    volcengine_access_key: str = ""
 
     # ---- 实时 / MCP ----
     realtime_backend: str = "sse"

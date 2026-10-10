@@ -5,7 +5,7 @@
  * 这里做一次显式转换，避免把脏字段直接扩散到组件层。
  */
 
-import type { EmotionTag, Message, Session } from "@ai-companion/shared";
+import type { Attachment, EmotionTag, Message, Session } from "@ai-companion/shared";
 
 /** 后端原始返回结构 */
 export interface SessionDto {
@@ -28,6 +28,7 @@ export interface MessageDto {
   content: string;
   content_type: string;
   emotion: string | null;
+  attachments: Attachment[];
   created_at: string;
 }
 
@@ -53,6 +54,7 @@ export function toMessage(dto: MessageDto): Message {
     content: dto.content,
     contentType: dto.content_type as Message["contentType"],
     emotion: (dto.emotion as EmotionTag | null) ?? undefined,
+    attachments: dto.attachments ?? [],
     createdAt: dto.created_at,
   };
 }

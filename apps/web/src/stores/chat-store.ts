@@ -8,7 +8,7 @@
  *   - 组件自己的展开、滚动等局部状态留在组件内部
  */
 
-import type { EmotionTag, Message, Session } from "@ai-companion/shared";
+import type { Attachment, EmotionTag, Message, Session } from "@ai-companion/shared";
 import { create } from "zustand";
 
 import { absoluteUrl } from "@/lib/utils";
@@ -57,7 +57,11 @@ interface ChatState {
   selectSession: (sessionId: string) => Promise<void>;
   createSession: (type: Session["type"]) => Promise<void>;
   removeSession: (sessionId: string) => Promise<void>;
-  sendMessage: (text: string, action?: AssistantAction) => Promise<void>;
+  sendMessage: (
+    text: string,
+    action?: AssistantAction,
+    attachments?: Attachment[],
+  ) => Promise<void>;
   clearError: () => void;
 }
 
@@ -133,18 +137,21 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
-  async sendMessage(text, action) {
+  async sendMessage(text, action, attachments) {
     const trimmed = text.trim();
     const { activeSessionId } = get();
-    if (!trimmed || !activeSessionId || get().sending) return;
+    const files = attachments ?? [];
+    // 只有图没有字也算一句话；两者都没有才不发
+    if ((!trimmed && files.length === 0) || !activeSessionId || get().sending) return;
 
     const userMessage: Message = {
       id: `local-${Date.now()}`,
       sessionId: activeSessionId,
       senderType: "user",
       senderId: LOCAL_USER_ID,
-      content: trimmed,
-      contentType: "text",
+      content: trimmed || "（图片）",
+      contentType: files.some((f) => f.kind === "image") ? "image" : "text",
+      attachments: files,
       createdAt: new Date().toISOString(),
     };
 
@@ -198,7 +205,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         absoluteUrl(chatApi.streamUrl),
         {
           session_id: activeSessionId,
-          messages: [{ role: "user", content: trimmed }],
+          messages: [{ role: "user", content: trimmed, attachments: files }],
           ...(action ? { action } : {}),
         },
         {

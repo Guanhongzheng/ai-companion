@@ -4,7 +4,7 @@ import { emotionThemeOf, type Message } from "@ai-companion/shared";
 import { motion } from "framer-motion";
 
 import { useEmotionMotion } from "@/features/theme/hooks/use-emotion-motion";
-import { cn } from "@/lib/utils";
+import { absoluteUrl, cn } from "@/lib/utils";
 
 interface Props {
   message: Message;
@@ -42,6 +42,32 @@ export function MessageBubble({ message }: Props) {
           letterSpacing: "var(--emotion-letter-spacing)",
         }}
       >
+        {message.attachments && message.attachments.length > 0 && (
+          <ul className="mb-1.5 flex flex-wrap gap-1.5">
+            {message.attachments
+              .filter((a) => a.kind === "image")
+              .map((a) => (
+                <li key={a.url}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={absoluteUrl(a.url)}
+                    alt={a.name || "图片"}
+                    title={a.description ?? a.name}
+                    className="max-h-40 rounded-lg border border-white/20 object-cover"
+                  />
+                </li>
+              ))}
+            {message.attachments
+              .filter((a) => a.kind === "audio")
+              .map((a) => (
+                <li key={a.url}>
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <audio controls src={absoluteUrl(a.url)} className="h-8 max-w-full" />
+                </li>
+              ))}
+          </ul>
+        )}
+
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
         {message.streaming && (
           <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-current align-text-bottom" />

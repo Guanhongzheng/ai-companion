@@ -3,7 +3,10 @@
 import { Send, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import type { Attachment } from "@ai-companion/shared";
 import { useChatStore, type AssistantAction } from "@/stores/chat-store";
+import { ImagePicker } from "@/features/multimodal/components/ImagePicker";
+import { VoiceInput } from "@/features/multimodal/components/VoiceInput";
 import { cn } from "@/lib/utils";
 import { AssistantActionBar, GroupMentionBar } from "./ActionBar";
 
@@ -17,6 +20,7 @@ interface Props {
 
 export function ChatComposer({ sessionType, action, onActionChange }: Props) {
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const sending = useChatStore((s) => s.sending);
   const waitingForMention = useChatStore((s) => s.waitingForMention);
   const sendMessage = useChatStore((s) => s.sendMessage);
@@ -24,15 +28,17 @@ export function ChatComposer({ sessionType, action, onActionChange }: Props) {
   // 切会话时清掉动作，避免把「润色」带到 AI 伴侣会话里
   useEffect(() => {
     onActionChange(null);
+    setAttachments([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionType]);
 
-  const canSend = text.trim().length > 0 && !sending;
+  const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending;
 
   const handleSubmit = () => {
     if (!canSend) return;
-    void sendMessage(text, action ?? undefined);
+    void sendMessage(text, action ?? undefined, attachments);
     setText("");
+    setAttachments([]);
     onActionChange(null);
   };
 
@@ -48,8 +54,18 @@ export function ChatComposer({ sessionType, action, onActionChange }: Props) {
         />
       )}
 
+      {attachments.length > 0 && (
+        <ImagePicker attachments={attachments} onChange={setAttachments} disabled={sending} />
+      )}
+
       <div className="px-4 pb-3">
         <div className="mx-auto flex max-w-3xl items-end gap-2">
+          <ImagePicker attachments={attachments} onChange={setAttachments} disabled={sending} />
+          <VoiceInput
+            disabled={sending}
+            onText={(t) => setText((prev) => (prev ? `${prev} ${t}` : t))}
+            onAttachment={(a) => setAttachments((prev) => [...prev, a])}
+          />
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}

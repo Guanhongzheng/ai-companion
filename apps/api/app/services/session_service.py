@@ -8,6 +8,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as OrmSession
 
 from app.models.session import MessageModel, SessionModel
+from app.services.media_service import dump_attachments
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ def append_message(
     content_type: str = "text",
     emotion: str | None = None,
     sender_id: str = "local-user",
+    attachments: list[dict[str, object]] | None = None,
 ) -> MessageModel:
     """追加一条消息并立即提交。
 
@@ -121,6 +123,7 @@ def append_message(
         content=content,
         content_type=content_type,
         emotion=emotion,
+        attachments=dump_attachments(attachments or []),
         created_at=_now(),
     )
     db.add(message)

@@ -56,6 +56,10 @@ class MessageModel(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     #: text / image / audio / file
     content_type: Mapped[str] = mapped_column(String(16), default="text")
+    #: 结构化附件，JSON 数组。元素形如
+    #: {"kind": "image", "url": "/api/v1/media/xxx.png", "name": "截图.png"}
+    #: {"kind": "audio", "url": "...", "transcript": "识别出的文字"}
+    attachments: Mapped[str] = mapped_column(Text, default="[]")
     #: 情绪标签，驱动前端主题 / 壁纸 / 音乐联动
     emotion: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

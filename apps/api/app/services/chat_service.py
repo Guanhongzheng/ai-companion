@@ -35,7 +35,7 @@ from app.schemas.chat import (
     StreamToken,
 )
 from app.services import intent as intent_mod
-from app.services import session_service
+from app.services import media_service, session_service, vision_service
 
 logger = logging.getLogger(__name__)
 
@@ -190,8 +190,9 @@ def build_messages(
     history: list[dict[str, str]],
     memories: list[dict[str, object]] | None = None,
     action: str = intent_mod.ACTION_CHAT,
+    attachment_note: str = "",
 ) -> list[dict[str, str]]:
-    """组装发给模型的消息数组：系统提示 + 动作指令 + 记忆 + 历史。"""
+    """组装发给模型的消息数组：系统提示 + 动作指令 + 记忆 + 附件描述 + 历史。"""
     messages: list[dict[str, str]] = [
         {"role": "system", "content": intent_mod.system_prompt_for(session_type, action)}
     ]
@@ -206,8 +207,50 @@ def build_messages(
                 ),
             }
         )
+    if attachment_note:
+        # 附件描述以 system 身份注入，避免污染用户原话
+        messages.append({"role": "system", "content": attachment_note})
     messages.extend(history)
     return messages
+
+
+async def _describe_attachments(
+    attachments: list[dict[str, object]], override: ModelOverride | None = None
+) -> str:
+    """把消息里的图片与语音转写整理成一段上下文。
+
+    没有可用的视觉模型时返回空串 —— 图片照样存、照样显示，只是 AI 看不见，
+    这时界面应提示「当前模型无法理解图片」，而不是静默当作已理解。
+    """
+    if not attachments:
+        return ""
+
+    parts: list[str] = []
+
+    # 语音：优先用前端已转好的文字，没有再试服务端 ASR
+    for audio in media_service.audio_of(attachments):
+        transcript = audio.get("transcript")
+        if transcript:
+            parts.append(f"（用户发来一段语音，内容是：{transcript}）")
+
+    images = media_service.images_of(attachments)
+    if images:
+        data_urls = [
+            url
+            for url in (vision_service.load_as_data_url(str(i.get("url", ""))) for i in images)
+            if url
+        ]
+        description = await vision_service.describe_images(
+            data_urls, vision_service.DEFAULT_VISION_PROMPT, override
+        )
+        if description:
+            parts.append(f"（用户发来了 {len(images)} 张图片，图片内容是：{description}）")
+        else:
+            parts.append(
+                f"（用户发来了 {len(images)} 张图片，但当前模型无法理解图片内容）"
+            )
+
+    return "\n".join(parts)
 
 
 async def _recall_memories(db: OrmSession, query: str) -> list[dict[str, object]]:
@@ -255,12 +298,18 @@ async def stream_chat_events(
 
     # 1) 落库用户消息
     latest_user = ""
+    latest_attachments: list[dict[str, object]] = []
     for msg in req.messages:
         session_service.append_message(
-            db, session, sender_type=msg.role, content=msg.content
+            db,
+            session,
+            sender_type=msg.role,
+            content=msg.content,
+            attachments=msg.attachments,
         )
         if msg.role == "user":
             latest_user = msg.content
+            latest_attachments = msg.attachments
 
     # 2) 意图判定：群聊里没被 @ 就安静旁听，不产生任何 AI 回复
     action = intent_mod.resolve_action(session.type, latest_user, req.action)
@@ -280,9 +329,12 @@ async def stream_chat_events(
     if memories:
         yield "memory", StreamMemory(items=memories)
 
+    # 3.7) 图片理解 / 语音转写，转成文本上下文
+    attachment_note = await _describe_attachments(latest_attachments, override)
+
     # 3) 组装上下文并流式生成
     history = session_service.to_model_messages(db, session)
-    messages = build_messages(session.type, history, memories, action)
+    messages = build_messages(session.type, history, memories, action, attachment_note)
 
     chunks: list[str] = []
     try:
@@ -337,9 +389,12 @@ async def complete_chat(
     real = has_credentials(req.model, override)
 
     for msg in req.messages:
-        session_service.append_message(db, session, sender_type=msg.role, content=msg.content)
+        session_service.append_message(
+            db, session, sender_type=msg.role, content=msg.content, attachments=msg.attachments
+        )
 
     latest = req.messages[-1].content if req.messages else ""
+    attachments = req.messages[-1].attachments if req.messages else []
     action = intent_mod.resolve_action(session.type, latest, req.action)
     if action == intent_mod.ACTION_SKIPPED:
         # 群聊里没被 @ ：用户消息已落库，但 AI 不应该说话
@@ -355,7 +410,8 @@ async def complete_chat(
     result = emotion_mod.PROVIDER(latest)
     memories = await _recall_memories(db, latest)
     history = session_service.to_model_messages(db, session)
-    messages = build_messages(session.type, history, memories, action)
+    attachment_note = await _describe_attachments(attachments, override)
+    messages = build_messages(session.type, history, memories, action, attachment_note)
 
     if real:
         from litellm import acompletion

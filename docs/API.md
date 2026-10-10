@@ -67,6 +67,30 @@ Embedding Key 即可，**上层代码一行都不用改**。
 设 `MEMORY_ENCRYPT=true` 与 `MEMORY_ENCRYPTION_KEY` 后，正文以 Fernet 加密落库。
 **未配置密钥时不会静默降级为明文**，接口 `/stats` 的 `encrypted` 字段会如实告知当前状态。
 
+## 多媒体
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/v1/media/image` | 上传图片（multipart，字段名 `file`） |
+| POST | `/api/v1/media/audio` | 上传音频 |
+| POST | `/api/v1/media/transcribe` | 音频转文字，服务端 ASR 兜底 |
+| POST | `/api/v1/media/vision` | 单独调一次图片理解 |
+| GET | `/api/v1/media/{filename}` | 读取已上传的文件 |
+
+支持类型：图片 png / jpeg / webp / gif；音频 webm / ogg / mp3 / m4a / wav
+（mime 允许带 `;codecs=...` 参数，Chrome 录音默认就是这种）。
+
+**安全约束**：
+
+* 落盘文件名完全由服务端用 uuid 生成，**不采用用户提交的原始文件名**
+* 磁盘扩展名由**类型白名单**推导 —— 把脚本伪装成 `image/png` 上传，存下来仍是 `.png`
+* 读取接口做目录穿越校验，`..` 一律 404
+* 图片大小上限 `MAX_IMAGE_MB`（默认 10MB），音频 `MAX_AUDIO_MB`（默认 25MB）
+
+聊天时消息里带 `attachments` 字段即可携带图片或语音：图片会自动做视觉理解、
+语音会用 `transcript` 一起注入上下文。**没配视觉 / ASR 能力时不会报错**，
+图片照常保存显示，对话里会带上「当前模型无法理解图片内容」的说明。
+
 ## 设置（BYOK）
 
 | 方法 | 路径 | 说明 |

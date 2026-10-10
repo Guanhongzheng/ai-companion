@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 class ChatMessageIn(BaseModel):
     role: str = Field(default="user", description="user | assistant | system")
     content: str
+    #: 图片 / 音频附件。带图片时会自动做视觉理解并注入上下文
+    attachments: list[dict[str, object]] = Field(default_factory=list)
 
 
 class ChatRequest(BaseModel):

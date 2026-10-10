@@ -12,7 +12,7 @@ from app.schemas.session import (
     SessionOut,
     SessionRename,
 )
-from app.services import session_service
+from app.services import media_service, session_service
 
 router = APIRouter()
 
@@ -40,7 +40,12 @@ def create_session(payload: SessionCreate, db: DbSession) -> SessionOut:
 )
 def list_messages(session_id: str, db: DbSession) -> list[MessageOut]:
     session_service.get_or_404(db, session_id)
-    return [MessageOut.model_validate(m) for m in session_service.list_messages(db, session_id)]
+    out: list[MessageOut] = []
+    for m in session_service.list_messages(db, session_id):
+        dto = MessageOut.model_validate(m)
+        # attachments 在库里是 JSON 文本，出参要的是结构化列表
+        out.append(dto.model_copy(update={"attachments": media_service.parse_attachments(m.attachments)}))
+    return out
 
 
 @router.patch("/{session_id}", response_model=SessionOut, summary="重命名会话")

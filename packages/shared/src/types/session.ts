@@ -43,12 +43,17 @@ export interface Message {
 }
 
 export interface Attachment {
-  id: string;
+  /** image / audio */
+  kind: "image" | "audio";
   url: string;
-  mimeType: string;
-  size: number;
-  /** 语音转写 / 图像 OCR 的结果 */
-  transcript?: string;
+  /** 用户可见的原始文件名 */
+  name?: string;
+  mimeType?: string;
+  size?: number;
+  /** 语音转写结果 */
+  transcript?: string | null;
+  /** 图像理解结果 */
+  description?: string | null;
 }
 
 // ---- 情绪 ----
