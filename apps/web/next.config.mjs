@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@ai-companion/shared"],
+  // 默认 .next；CI 里可以换目录做并行隔离构建
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   experimental: {
     typedRoutes: true,
   },

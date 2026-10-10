@@ -5,7 +5,9 @@ import { AlertCircle, Sparkles, X } from "lucide-react";
 import { useEffect } from "react";
 
 import { useChatStore } from "@/stores/chat-store";
+import { MusicDock } from "@/features/music/components/MusicDock";
 import { applyEmotionTheme } from "@/features/theme/lib/apply-emotion-theme";
+import { EmotionWallpaper } from "@/features/wallpaper/components/EmotionWallpaper";
 import { cn } from "@/lib/utils";
 import { ChatComposer } from "./ChatComposer";
 import { MessageList } from "./MessageList";
@@ -37,12 +39,8 @@ export function ChatWindow() {
 
   return (
     <div className="relative flex h-screen overflow-hidden">
-      {/* 动态壁纸：先用 CSS Gradient 占位，M4 再接 Three.js + Web Audio */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 transition-[background] duration-700"
-        style={{ backgroundImage: "var(--wallpaper-gradient)" }}
-      />
+      {/* 动态壁纸：Three.js 粒子场，WebGL 不可用时自动退回 CSS Gradient */}
+      <EmotionWallpaper />
 
       <SessionList />
 
@@ -101,6 +99,11 @@ export function ChatWindow() {
         <MessageList />
         <ChatComposer />
       </main>
+
+      {/* 情绪歌单：播放中的音频会被壁纸的频谱分析器接管 */}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-20">
+        <MusicDock />
+      </div>
     </div>
   );
 }

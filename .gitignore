@@ -11,6 +11,8 @@ node_modules/
 
 # ---------- Next.js / 构建产物 ----------
 .next/
+# 自定义 distDir（NEXT_DIST_DIR）产生的构建目录
+.next-*/
 out/
 build/
 dist/
@@ -93,6 +95,8 @@ desktop.ini
 .aider*
 
 # ---------- 杂项 ----------
+# Next.js 构建过程产生的临时文件
+_tmp_*
 *.local
 *.pid
 *.seed

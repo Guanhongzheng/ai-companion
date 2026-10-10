@@ -55,9 +55,11 @@ const config: Config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        // 情绪驱动的圆角
+        emotion: "var(--emotion-radius)",
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        sans: ["var(--emotion-font-family)", "system-ui", "sans-serif"],
       },
       keyframes: {
         "accordion-down": {

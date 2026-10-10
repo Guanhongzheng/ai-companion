@@ -1,7 +1,9 @@
 "use client";
 
 import { emotionThemeOf, type Message } from "@ai-companion/shared";
+import { motion } from "framer-motion";
 
+import { useEmotionMotion } from "@/features/theme/hooks/use-emotion-motion";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -9,34 +11,52 @@ interface Props {
 }
 
 export function MessageBubble({ message }: Props) {
+  const { transition, variants } = useEmotionMotion();
+
   const isUser = message.senderType === "user";
   const emotion = message.emotion;
+  const emotionTheme = emotion ? emotionThemeOf(emotion) : null;
 
   return (
-    <div className={cn("flex w-full gap-2 px-4 py-1.5", isUser ? "justify-end" : "justify-start")}>
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={variants}
+      transition={transition}
+      className={cn(
+        "flex w-full gap-2 px-4 py-emotion",
+        isUser ? "justify-end" : "justify-start",
+      )}
+    >
       <div
         className={cn(
-          "max-w-[min(42rem,80%)] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
+          "max-w-[var(--emotion-bubble-width)] rounded-emotion px-3.5 py-2 leading-relaxed",
           isUser
             ? "rounded-br-sm bg-emotion-primary text-white"
             : "rounded-bl-sm bg-muted text-foreground",
+          // 愤怒时气泡更硬朗，平静疲惫时更圆润柔和
+          emotion === "angry" && !isUser && "ring-1 ring-emotion-primary/40",
         )}
+        style={{
+          fontSize: `calc(1rem * var(--emotion-font-scale) * 0.875)`,
+          letterSpacing: "var(--emotion-letter-spacing)",
+        }}
       >
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
         {message.streaming && (
           <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-current align-text-bottom" />
         )}
-        {!isUser && emotion && (
+        {!isUser && emotionTheme && (
           <p className="mt-1 flex items-center gap-1 text-[11px] opacity-70">
             <span
               aria-hidden
               className="inline-block h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: `hsl(${emotionThemeOf(emotion).primary})` }}
+              style={{ backgroundColor: `hsl(${emotionTheme.primary})` }}
             />
-            {emotionThemeOf(emotion).label}
+            {emotionTheme.label}
           </p>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

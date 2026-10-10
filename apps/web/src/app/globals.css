@@ -38,6 +38,22 @@
 
     /* ★ 动态壁纸：CSS Gradient 兜底方案 */
     --wallpaper-gradient: linear-gradient(135deg, hsl(262 83% 58% / 0.25), hsl(199 89% 48% / 0.2));
+
+    /* ★ 情绪字体 */
+    --emotion-font-family: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB",
+      "Microsoft YaHei", sans-serif;
+    --emotion-font-scale: 1;
+    --emotion-font-weight: 400;
+    --emotion-letter-spacing: 0;
+
+    /* ★ 情绪布局 */
+    --emotion-radius: 0.875rem;
+    --emotion-density: 1;
+    --emotion-bubble-width: 42%;
+
+    /* ★ 情绪动效 */
+    --emotion-motion-scale: 1;
+    --emotion-enter-offset: 8px;
   }
 
   .dark {
@@ -75,6 +91,10 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    /* 字体随情绪切换 */
+    font-family: var(--emotion-font-family);
+    font-weight: var(--emotion-font-weight);
+    letter-spacing: var(--emotion-letter-spacing);
   }
 
   /* 全局滚动条（对话列表 / 消息区共用） */
@@ -87,5 +107,22 @@
   }
   ::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+@layer utilities {
+  /* 情绪圆角：气泡、卡片统一消费 */
+  .rounded-emotion {
+    border-radius: var(--emotion-radius);
+  }
+
+  /* 情绪间距密度 */
+  .gap-emotion {
+    gap: calc(0.375rem * var(--emotion-density));
+  }
+
+  .py-emotion {
+    padding-top: calc(0.375rem * var(--emotion-density));
+    padding-bottom: calc(0.375rem * var(--emotion-density));
   }
 }
