@@ -26,6 +26,7 @@ from app.core.overrides import ModelOverride
 from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
+    StreamAction,
     StreamDone,
     StreamEmotion,
     StreamError,
@@ -33,6 +34,7 @@ from app.schemas.chat import (
     StreamMeta,
     StreamToken,
 )
+from app.services import intent as intent_mod
 from app.services import session_service
 
 logger = logging.getLogger(__name__)
@@ -51,11 +53,8 @@ GROUP_SYSTEM = (
     "你参与一个群聊。被 @ 时才回答，回答简短自然，不要抢话，不要刷屏。"
 )
 
-SYSTEM_PROMPTS = {
-    "ai": AI_COMPANION_SYSTEM,
-    "direct": ASSISTANT_SYSTEM,
-    "group": GROUP_SYSTEM,
-}
+#: 真正的系统提示与动作指令都在 intent 模块，这里只做转发
+SYSTEM_PROMPTS = intent_mod.SYSTEM_PROMPTS
 
 #: 无 Key 时使用的模拟回复，会根据情绪挑一句，让演示有辨识度
 MOCK_REPLIES = {
@@ -190,10 +189,11 @@ def build_messages(
     session_type: str,
     history: list[dict[str, str]],
     memories: list[dict[str, object]] | None = None,
+    action: str = intent_mod.ACTION_CHAT,
 ) -> list[dict[str, str]]:
-    """组装发给模型的消息数组：系统提示 + 记忆 + 历史。"""
+    """组装发给模型的消息数组：系统提示 + 动作指令 + 记忆 + 历史。"""
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": SYSTEM_PROMPTS.get(session_type, ASSISTANT_SYSTEM)}
+        {"role": "system", "content": intent_mod.system_prompt_for(session_type, action)}
     ]
     if memories:
         lines = "\n".join(f"- {m.get('content', '')}" for m in memories)
@@ -262,24 +262,32 @@ async def stream_chat_events(
         if msg.role == "user":
             latest_user = msg.content
 
-    # 2) 情绪分析先发，前端可以立刻切主题，比等文字更快
+    # 2) 意图判定：群聊里没被 @ 就安静旁听，不产生任何 AI 回复
+    action = intent_mod.resolve_action(session.type, latest_user, req.action)
+    waiting = action == intent_mod.ACTION_SKIPPED
+    yield "action", StreamAction(action=action, waiting_for_mention=waiting)
+    if waiting:
+        logger.info("群聊未被 @，本轮不生成回复")
+        yield "done", StreamDone(finish_reason="skipped")
+        return
+
+    # 3) 情绪分析先发，前端可以立刻切主题，比等文字更快
     result = emotion_mod.PROVIDER(latest_user)
     yield "emotion", StreamEmotion(tag=result.tag, confidence=result.confidence)
 
-    # 2.5) 召回长期记忆。放在情绪之后、生成之前，让界面能先展示「AI 想起了什么」
+    # 3.5) 召回长期记忆。放在情绪之后、生成之前，让界面能先展示「AI 想起了什么」
     memories = await _recall_memories(db, latest_user)
     if memories:
         yield "memory", StreamMemory(items=memories)
 
     # 3) 组装上下文并流式生成
     history = session_service.to_model_messages(db, session)
-    messages = build_messages(session.type, history, memories)
+    messages = build_messages(session.type, history, memories, action)
 
     chunks: list[str] = []
     try:
-        source = _stream_tokens(messages, model, api_key) if real else _mock_tokens(
-            _mock_reply(result.tag, latest_user)
-        )
+        mock_text = _mock_action_reply(action) or _mock_reply(result.tag, latest_user)
+        source = _stream_tokens(messages, model, api_key) if real else _mock_tokens(mock_text)
         async for text in source:
             chunks.append(text)
             yield "token", StreamToken(text=text)
@@ -296,6 +304,22 @@ async def stream_chat_events(
     )
 
     yield "done", StreamDone(finish_reason="stop")
+
+
+#: 无 Key 时，按动作给出各自的模拟结果，让演示也能看出行为差异
+MOCK_ACTION_REPLIES = {
+    intent_mod.ACTION_POLISH: "润色后的版本：「明天下午三点，方便的话把方案发我，我看一下再回复你。」",
+    intent_mod.ACTION_TRANSLATE: "Translation: Let's meet at three tomorrow afternoon. I'll send over the proposal later.",
+    intent_mod.ACTION_SUMMARIZE: "- 明天三点开会\n- 需要提前准备方案\n- 会后由我方跟进",
+    intent_mod.ACTION_SUGGEST: (
+        "1. 「可以，我三点准时到。」\n2. 「时间我这边没问题，方案我提前发群里。」"
+    ),
+}
+
+
+def _mock_action_reply(action: str) -> str | None:
+    """辅助动作的模拟回复；普通聊天返回 None。"""
+    return MOCK_ACTION_REPLIES.get(action)
 
 
 def _mock_reply(tag: str, user_text: str) -> str:
@@ -315,10 +339,23 @@ async def complete_chat(
     for msg in req.messages:
         session_service.append_message(db, session, sender_type=msg.role, content=msg.content)
 
-    result = emotion_mod.PROVIDER(req.messages[-1].content if req.messages else "")
-    memories = await _recall_memories(db, req.messages[-1].content if req.messages else "")
+    latest = req.messages[-1].content if req.messages else ""
+    action = intent_mod.resolve_action(session.type, latest, req.action)
+    if action == intent_mod.ACTION_SKIPPED:
+        # 群聊里没被 @ ：用户消息已落库，但 AI 不应该说话
+        return ChatResponse(
+            session_id=session.id,
+            reply="",
+            model=model,
+            mocked=False,
+            action=action,
+            waiting_for_mention=True,
+        )
+
+    result = emotion_mod.PROVIDER(latest)
+    memories = await _recall_memories(db, latest)
     history = session_service.to_model_messages(db, session)
-    messages = build_messages(session.type, history, memories)
+    messages = build_messages(session.type, history, memories, action)
 
     if real:
         from litellm import acompletion
@@ -340,7 +377,9 @@ async def complete_chat(
                 detail=friendly_model_error(exc),
             ) from exc
     else:
-        reply = _mock_reply(result.tag, req.messages[-1].content if req.messages else "")
+        reply = _mock_action_reply(action) or _mock_reply(
+            result.tag, req.messages[-1].content if req.messages else ""
+        )
 
     session_service.append_message(
         db, session, sender_type="ai", content=reply, emotion=result.tag
@@ -353,6 +392,7 @@ async def complete_chat(
         model=model,
         mocked=not real,
         memories=memories,
+        action=action,
     )
 
 

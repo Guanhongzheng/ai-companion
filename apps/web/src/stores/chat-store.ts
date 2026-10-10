@@ -19,12 +19,16 @@ import type { RecalledMemory } from "@/features/memory/types";
 import {
   toMessage,
   toSession,
+  type StreamActionPayload,
   type StreamDonePayload,
   type StreamEmotionPayload,
   type StreamErrorPayload,
   type StreamMetaPayload,
   type StreamTokenPayload,
 } from "@/features/chat/types";
+
+/** 好友单聊的辅助动作 */
+export type AssistantAction = "polish" | "translate" | "summarize" | "suggest";
 
 const LOCAL_USER_ID = "local-user";
 const STREAMING_ID = "__streaming__";
@@ -43,13 +47,17 @@ interface ChatState {
   mocked: boolean;
   /** 本轮召回的长期记忆，用来在界面上展示「AI 想起了什么」 */
   recalledMemories: RecalledMemory[];
+  /** 本轮意图判定结果 */
+  lastAction: StreamActionPayload["action"];
+  /** 群聊里 AI 是否在等你 @ 它 */
+  waitingForMention: boolean;
   error: string | null;
 
   loadSessions: () => Promise<void>;
   selectSession: (sessionId: string) => Promise<void>;
   createSession: (type: Session["type"]) => Promise<void>;
   removeSession: (sessionId: string) => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, action?: AssistantAction) => Promise<void>;
   clearError: () => void;
 }
 
@@ -64,6 +72,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   model: null,
   mocked: false,
   recalledMemories: [],
+  lastAction: "chat",
+  waitingForMention: false,
   error: null,
 
   async loadSessions() {
@@ -123,7 +133,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
-  async sendMessage(text) {
+  async sendMessage(text, action) {
     const trimmed = text.trim();
     const { activeSessionId } = get();
     if (!trimmed || !activeSessionId || get().sending) return;
@@ -153,6 +163,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       sending: true,
       error: null,
       recalledMemories: [],
+      lastAction: action ?? "chat",
+      waitingForMention: false,
       messages: {
         ...state.messages,
         [activeSessionId]: [...(state.messages[activeSessionId] ?? []), userMessage, streamingMessage],
@@ -187,6 +199,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         {
           session_id: activeSessionId,
           messages: [{ role: "user", content: trimmed }],
+          ...(action ? { action } : {}),
         },
         {
           onEvent(event, raw) {
@@ -194,6 +207,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               case "meta": {
                 const meta = raw as StreamMetaPayload;
                 set({ model: meta.model, mocked: meta.mocked });
+                break;
+              }
+              case "action": {
+                const payload = raw as StreamActionPayload;
+                set({ lastAction: payload.action, waitingForMention: payload.waiting_for_mention });
                 break;
               }
               case "emotion": {
@@ -235,6 +253,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     } finally {
       patch({ streaming: false });
       set({ sending: false });
+      // 群聊未被 @ 时后端不会生成回复，把占位气泡清掉，别留一个空壳
+      if (get().waitingForMention) {
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [activeSessionId]: (state.messages[activeSessionId] ?? []).filter(
+              (m) => m.id !== STREAMING_ID,
+            ),
+          },
+        }));
+      }
       // 后端已落库，回读一次拿正式 id 与完整历史
       void get().selectSession(activeSessionId);
     }

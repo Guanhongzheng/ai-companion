@@ -65,18 +65,24 @@ def test_chat_stream_event_order(client: TestClient, session_id: str) -> None:
     events = parse_sse(resp.text)
     names = [name for name, _ in events]
 
+    # 事件顺序：意图判定 → 情绪 → 增量文本 → 结束
     assert names[0] == "meta"
-    assert names[1] == "emotion"
+    assert names[1] == "action"
+    assert names[2] == "emotion"
     assert names[-1] == "done"
     assert "token" in names
-    assert names.index("emotion") < names.index("token")
+    assert names.index("action") < names.index("emotion") < names.index("token")
 
     meta = events[0][1]
     assert meta["session_id"] == session_id
     assert meta["mocked"] is True
     assert "/" in meta["model"], "模型名应带 LiteLLM provider 前缀"
 
-    emotion = events[1][1]
+    action = events[1][1]
+    assert action["action"] == "chat"
+    assert action["waiting_for_mention"] is False
+
+    emotion = next(d for n, d in events if n == "emotion")
     assert emotion["tag"] == "tired"
     assert 0 < emotion["confidence"] <= 1
 

@@ -117,6 +117,7 @@ Key 无效、模型不存在、余额不足、超时等异常会被翻译成中�
 | event | data 结构 | 说明 |
 | --- | --- | --- |
 | `meta` | `{ "session_id", "model", "mocked" }` | 会话元信息。`mocked=true` 表示未配置 Key、走本地降级 |
+| `action` | `{ "action": "polish", "waiting_for_mention": false }` | 本轮意图判定。群聊未被 @ 时 `action=skipped` 且不产生任何 token |
 | `emotion` | `{ "tag": "tired", "confidence": 0.65 }` | 情绪标签，前端据此切换主题 |
 | `memory` | `{ "items": [{ "id", "content", "score", "reranker" }] }` | 本轮召回的长期记忆，前端展示「AI 想起了什么」 |
 | `token` | `{ "text": "辛苦" }` | 增量文本，中文按 1-2 字切块推送 |

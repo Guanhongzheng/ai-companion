@@ -1,11 +1,11 @@
 "use client";
 
 import { emotionThemeOf } from "@ai-companion/shared";
-import { AlertCircle, Brain, KeyRound, Settings, Sparkles, X } from "lucide-react";
+import { AlertCircle, Brain, KeyRound, Settings, Sparkles, Users, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-import { useChatStore } from "@/stores/chat-store";
+import { useChatStore, type AssistantAction } from "@/stores/chat-store";
 import { MusicDock } from "@/features/music/components/MusicDock";
 import { currentModelName, useSettingsStore } from "@/features/settings/store/settings-store";
 import { applyEmotionTheme } from "@/features/theme/lib/apply-emotion-theme";
@@ -23,6 +23,7 @@ export function ChatWindow() {
   const model = useChatStore((s) => s.model);
   const mocked = useChatStore((s) => s.mocked);
   const recalledMemories = useChatStore((s) => s.recalledMemories);
+  const waitingForMention = useChatStore((s) => s.waitingForMention);
   const error = useChatStore((s) => s.error);
   const clearError = useChatStore((s) => s.clearError);
   const loadSessions = useChatStore((s) => s.loadSessions);
@@ -37,6 +38,7 @@ export function ChatWindow() {
     applyEmotionTheme(emotion);
   }, [emotion]);
 
+  const [assistantAction, setAssistantAction] = useState<AssistantAction | null>(null);
   const byokEnabled = useSettingsStore((s) => s.enabled);
   const byokProvider = useSettingsStore((s) => s.providerId);
   const byokModelName = useSettingsStore((s) => s.modelName);
@@ -59,9 +61,11 @@ export function ChatWindow() {
             <p className="truncate text-xs text-muted-foreground">
               {active?.memberCount && active.memberCount > 2
                 ? `${active.memberCount} 人群聊`
-                : active?.type === "ai"
-                  ? "AI 伴侣 · 全量能力"
-                  : "好友单聊 · AI 辅助"}
+                : active?.type === "group"
+                  ? "AI 只在被 @ 时回复"
+                  : active?.type === "direct"
+                    ? "AI 辅助，不冒充你的朋友"
+                    : "AI 伴侣 · 全量能力"}
             </p>
           </div>
 
@@ -121,6 +125,14 @@ export function ChatWindow() {
           </div>
         </header>
 
+        {active?.type === "group" && active.memberCount > 2 && (
+          <div className="flex items-center gap-1.5 border-b border-border px-4 py-1.5 text-[11px] text-muted-foreground">
+            <Users className="h-3 w-3" />
+            群里有 {active.memberCount - 1} 位其他成员
+            {waitingForMention && <span className="text-emotion-primary">· 试试 @ 它</span>}
+          </div>
+        )}
+
         {recalledMemories.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-emotion-primary/5 px-4 py-2 text-[11px]">
             <span className="text-muted-foreground">AI 想起了：</span>
@@ -147,7 +159,11 @@ export function ChatWindow() {
         )}
 
         <MessageList />
-        <ChatComposer />
+        <ChatComposer
+          sessionType={(active?.type ?? "ai") as "ai" | "direct" | "group"}
+          action={assistantAction}
+          onActionChange={setAssistantAction}
+        />
       </main>
 
       {/* 情绪歌单：播放中的音频会被壁纸的频谱分析器接管 */}

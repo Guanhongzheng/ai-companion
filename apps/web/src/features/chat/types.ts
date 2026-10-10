@@ -73,6 +73,12 @@ export interface StreamMetaPayload {
   mocked: boolean;
 }
 
+/** 会话意图：正常聊天 / 辅助动作 / 群聊未@跳过 */
+export interface StreamActionPayload {
+  action: "chat" | "polish" | "translate" | "summarize" | "suggest" | "skipped";
+  waiting_for_mention: boolean;
+}
+
 export interface StreamEmotionPayload {
   tag: EmotionTag;
   confidence: number;

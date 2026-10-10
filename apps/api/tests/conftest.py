@@ -49,5 +49,24 @@ def client() -> Iterator[TestClient]:
 
 @pytest.fixture
 def session_id(client: TestClient) -> str:
-    """拿一个可用的会话 ID。"""
-    return client.get("/api/v1/sessions").json()[0]["id"]
+    """AI 伴侣会话的 ID。
+
+    必须显式挑ai 类型：群聊会话在没有 @ 提及时**不会**产生 AI 回复，
+    拿列表第一个（正好是群聊）会让对话相关的测试全部失真。
+    """
+    sessions = client.get("/api/v1/sessions").json()
+    return next(s["id"] for s in sessions if s["type"] == "ai")
+
+
+@pytest.fixture
+def group_session_id(client: TestClient) -> str:
+    """群聊会话的 ID，用于测试 @ 唤醒逻辑。"""
+    sessions = client.get("/api/v1/sessions").json()
+    return next(s["id"] for s in sessions if s["type"] == "group")
+
+
+@pytest.fixture
+def direct_session_id(client: TestClient) -> str:
+    """好友单聊会话的 ID，用于测试辅助动作。"""
+    sessions = client.get("/api/v1/sessions").json()
+    return next(s["id"] for s in sessions if s["type"] == "direct")
