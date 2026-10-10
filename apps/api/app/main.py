@@ -10,6 +10,8 @@ from app import __version__
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.session import SessionLocal, init_db
+from app.services import memory_service
+from app.services.memory_service import ensure_seed_memories
 from app.services.session_service import ensure_seed
 
 
@@ -19,7 +21,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
     with SessionLocal() as db:
         ensure_seed(db)
-    # TODO(M2): 初始化 Chroma 向量库客户端
+        ensure_seed_memories(db)
+        memory_service.sync_vector_store(db)
+    # TODO(M2): 按需预热 Chroma 连接与重排模型
     yield
     # TODO: 释放 HTTP / 向量库连接池
 

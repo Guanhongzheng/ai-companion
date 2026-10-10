@@ -26,6 +26,7 @@ from app.schemas.chat import (
     StreamDone,
     StreamEmotion,
     StreamError,
+    StreamMemory,
     StreamMeta,
     StreamToken,
 )
@@ -160,9 +161,58 @@ def _chunk_cn(text: str) -> list[str]:
     return [text[i : i + 2] for i in range(0, len(text), 2)] or [""]
 
 
-def build_messages(session_type: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
-    """组装发给模型的消息数组：系统提示 + 历史。"""
-    return [{"role": "system", "content": SYSTEM_PROMPTS.get(session_type, ASSISTANT_SYSTEM)}, *history]
+def build_messages(
+    session_type: str,
+    history: list[dict[str, str]],
+    memories: list[dict[str, object]] | None = None,
+) -> list[dict[str, str]]:
+    """组装发给模型的消息数组：系统提示 + 记忆 + 历史。"""
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": SYSTEM_PROMPTS.get(session_type, ASSISTANT_SYSTEM)}
+    ]
+    if memories:
+        lines = "\n".join(f"- {m.get('content', '')}" for m in memories)
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "以下是关于用户的已知信息，可以自然地利用它们来回应，"
+                    "不要生硬罗列，也不要提「根据我的记录」这类说法：\n" + lines
+                ),
+            }
+        )
+    messages.extend(history)
+    return messages
+
+
+async def _recall_memories(db: OrmSession, query: str) -> list[dict[str, object]]:
+    """召回与本轮相关的记忆，供注入 prompt 与界面展示。"""
+    from app.memory.retriever import retrieve
+
+    if not query.strip():
+        return []
+    try:
+        hits = await retrieve(query)
+    except Exception as exc:
+        logger.warning("记忆召回失败：%s", exc)
+        return []
+
+    if not hits:
+        return []
+
+    # 命中的记忆 hit_count +1（借数据库 session 更新）
+    from app.models.memory import MemoryModel
+
+    for hit in hits:
+        row = db.get(MemoryModel, hit.id)
+        if row is not None:
+            row.hit_count += 1
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return [hit.to_dict() for hit in hits]
 
 
 async def stream_chat_events(
@@ -191,9 +241,14 @@ async def stream_chat_events(
     result = emotion_mod.PROVIDER(latest_user)
     yield "emotion", StreamEmotion(tag=result.tag, confidence=result.confidence)
 
+    # 2.5) 召回长期记忆。放在情绪之后、生成之前，让界面能先展示「AI 想起了什么」
+    memories = await _recall_memories(db, latest_user)
+    if memories:
+        yield "memory", StreamMemory(items=memories)
+
     # 3) 组装上下文并流式生成
     history = session_service.to_model_messages(db, session)
-    messages = build_messages(session.type, history)
+    messages = build_messages(session.type, history, memories)
 
     chunks: list[str] = []
     try:
@@ -234,8 +289,9 @@ async def complete_chat(db: OrmSession, req: ChatRequest) -> ChatResponse:
         session_service.append_message(db, session, sender_type=msg.role, content=msg.content)
 
     result = emotion_mod.PROVIDER(req.messages[-1].content if req.messages else "")
+    memories = await _recall_memories(db, req.messages[-1].content if req.messages else "")
     history = session_service.to_model_messages(db, session)
-    messages = build_messages(session.type, history)
+    messages = build_messages(session.type, history, memories)
 
     if real:
         from litellm import acompletion
@@ -255,6 +311,7 @@ async def complete_chat(db: OrmSession, req: ChatRequest) -> ChatResponse:
         emotion=result.tag,
         model=model,
         mocked=not real,
+        memories=memories,
     )
 
 

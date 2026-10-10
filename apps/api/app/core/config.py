@@ -56,6 +56,18 @@ class Settings(BaseSettings):
     enable_safety_filter: bool = True
     memory_encryption_key: str = ""
 
+    # ---- RAG 记忆 ----
+    #: 向量化实现：hashing / sentence-transformers / cloud，留空则自动按优先级探测
+    memory_embedding_provider: str = ""
+    #: 记忆召回数量（送入重排前的候选数）
+    memory_recall_k: int = 8
+    #: 重排后最终注入对话的记忆条数
+    memory_top_n: int = 3
+    #: 去重阈值：新记忆与已有记忆相似度超过它则视为重复
+    memory_dedup_threshold: float = 0.86
+    #: 是否加密记忆正文
+    memory_encrypt: bool = False
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

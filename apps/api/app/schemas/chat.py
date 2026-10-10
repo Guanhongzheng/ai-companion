@@ -26,6 +26,7 @@ class ChatResponse(BaseModel):
     emotion: str | None = None
     model: str | None = None
     mocked: bool = Field(default=False, description="是否走了本地降级，未调用真实模型")
+    memories: list[dict[str, object]] = Field(default_factory=list)
 
 
 # ---- SSE 事件负载 ----
@@ -48,6 +49,12 @@ class StreamToken(BaseModel):
 
 class StreamDone(BaseModel):
     finish_reason: str = "stop"
+
+
+class StreamMemory(BaseModel):
+    """本次回复召回到的记忆，用来在界面上展示「AI 想起了什么」。"""
+
+    items: list[dict[str, object]] = []
 
 
 class StreamError(BaseModel):

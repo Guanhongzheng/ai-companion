@@ -10,6 +10,14 @@ from app.schemas.chat import (
     StreamMeta,
     StreamToken,
 )
+from app.schemas.memory import (
+    MemoryCreate,
+    MemoryIngest,
+    MemoryOut,
+    MemorySearchHit,
+    MemoryStats,
+    MemoryUpdate,
+)
 from app.schemas.session import (
     MessageOut,
     SessionCreate,
@@ -21,6 +29,12 @@ __all__ = [
     "ChatMessageIn",
     "ChatRequest",
     "ChatResponse",
+    "MemoryCreate",
+    "MemoryIngest",
+    "MemoryOut",
+    "MemorySearchHit",
+    "MemoryStats",
+    "MemoryUpdate",
     "MessageOut",
     "SessionCreate",
     "SessionOut",

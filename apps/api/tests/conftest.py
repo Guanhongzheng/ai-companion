@@ -11,8 +11,11 @@ from pathlib import Path
 
 _TEST_DB = Path(tempfile.gettempdir()) / "ai_companion_test.db"
 _TEST_DB.unlink(missing_ok=True)
+_TEST_CHROMA = Path(tempfile.gettempdir()) / "ai_companion_test_chroma"
 
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"
+# Chroma 默认落在项目 data/ 下，测试时改到临时目录，别污染开发环境
+os.environ["CHROMA_PERSIST_DIR"] = _TEST_CHROMA.as_posix()
 # 保证测试跑在「无 Key 降级」这条路径上，不依赖开发者的本地 .env
 for _key in (
     "OPENAI_API_KEY",

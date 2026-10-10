@@ -32,6 +32,41 @@ Base URL：`http://localhost:8000`
 
 首次启动会自动灌入三条示例会话（AI 伴侣 / 好友 / 群聊各一），界面一打开就有内容。
 
+## 记忆
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/memory` | 记忆列表，可 `?type=profile` 按类型过滤 |
+| GET | `/api/v1/memory/stats` | 统计：总数、分类、是否加密、向量化实现 |
+| GET | `/api/v1/memory/search?q=&top_n=` | 语义搜索，返回命中分数与重排方式 |
+| POST | `/api/v1/memory` | 手动新增，body `{ content, type }`，重复内容自动去重 |
+| POST | `/api/v1/memory/ingest` | 从一段文本自动抽取记忆，body `{ text }` |
+| PATCH | `/api/v1/memory/{id}` | 编辑，body `{ content?, type?, pinned? }` |
+| DELETE | `/api/v1/memory/{id}` | 删除单条（SQL 与向量库同时删） |
+| GET | `/api/v1/memory/export` | 导出 JSON（正文解密） |
+| DELETE | `/api/v1/memory` | 一键清空全部 |
+
+记忆类型：`profile`（身份）/ `preference`（喜好）/ `fact`（事实）/ `event`（事件）。
+
+### 向量化实现的自动选择
+
+| 优先级 | 实现 | 启用条件 |
+| --- | --- | --- |
+| 1 | 本地 `bge-m3` | 装了 `requirements-ml.txt` |
+| 2 | 云端 Embedding | 配了任意模型 API Key，经 LiteLLM 路由 |
+| 3 | 哈希兜底 | 都没有时，零依赖、毫秒级 |
+
+哈希实现是**纯字面匹配**（字符 n-gram 特征哈希），能处理「我做什么工作」这类有字面重叠的
+查询，但理解不了「宠物 → 猫」这种语义关系。想要语义检索质量，装 bge-m3 或配一个
+Embedding Key 即可，**上层代码一行都不用改**。
+
+可用 `MEMORY_EMBEDDING_PROVIDER` 强制指定实现（`hashing` / `sentence-transformers` / `cloud`）。
+
+### 加密
+
+设 `MEMORY_ENCRYPT=true` 与 `MEMORY_ENCRYPTION_KEY` 后，正文以 Fernet 加密落库。
+**未配置密钥时不会静默降级为明文**，接口 `/stats` 的 `encrypted` 字段会如实告知当前状态。
+
 ## 对话
 
 | 方法 | 路径 | 说明 |
@@ -58,6 +93,7 @@ Base URL：`http://localhost:8000`
 | --- | --- | --- |
 | `meta` | `{ "session_id", "model", "mocked" }` | 会话元信息。`mocked=true` 表示未配置 Key、走本地降级 |
 | `emotion` | `{ "tag": "tired", "confidence": 0.65 }` | 情绪标签，前端据此切换主题 |
+| `memory` | `{ "items": [{ "id", "content", "score", "reranker" }] }` | 本轮召回的长期记忆，前端展示「AI 想起了什么」 |
 | `token` | `{ "text": "辛苦" }` | 增量文本，中文按 1-2 字切块推送 |
 | `done` | `{ "finish_reason": "stop" }` | 流结束 |
 | `error` | `{ "message": "..." }` | 出错（随后连接关闭） |

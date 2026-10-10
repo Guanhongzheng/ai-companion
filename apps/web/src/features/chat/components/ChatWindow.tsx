@@ -1,7 +1,8 @@
 "use client";
 
 import { emotionThemeOf } from "@ai-companion/shared";
-import { AlertCircle, Sparkles, X } from "lucide-react";
+import { AlertCircle, Brain, Sparkles, X } from "lucide-react";
+import Link from "next/link";
 import { useEffect } from "react";
 
 import { useChatStore } from "@/stores/chat-store";
@@ -20,6 +21,7 @@ export function ChatWindow() {
   const emotionConfidence = useChatStore((s) => s.emotionConfidence);
   const model = useChatStore((s) => s.model);
   const mocked = useChatStore((s) => s.mocked);
+  const recalledMemories = useChatStore((s) => s.recalledMemories);
   const error = useChatStore((s) => s.error);
   const clearError = useChatStore((s) => s.clearError);
   const loadSessions = useChatStore((s) => s.loadSessions);
@@ -83,8 +85,32 @@ export function ChatWindow() {
                 {mocked ? "模拟模式" : model.split("/").pop()}
               </span>
             )}
+
+            <Link
+              href="/memory"
+              title="管理长期记忆"
+              className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+            >
+              <Brain className="h-3 w-3" />
+              记忆
+            </Link>
           </div>
         </header>
+
+        {recalledMemories.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-emotion-primary/5 px-4 py-2 text-[11px]">
+            <span className="text-muted-foreground">AI 想起了：</span>
+            {recalledMemories.map((m) => (
+              <span
+                key={m.id}
+                className="rounded-full bg-background px-2 py-0.5 ring-1 ring-border"
+              >
+                {m.content}
+                <span className="ml-1 opacity-50">{(m.score * 100).toFixed(0)}%</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         {error && (
           <div className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">

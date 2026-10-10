@@ -50,14 +50,14 @@ htmlcov/
 secrets/
 
 # ---------- 本地运行时数据（RAG / 上传 / 数据库 / 对象存储）----------
-/data/uploads/*
-!/data/uploads/.gitkeep
-/data/chroma/*
-!/data/chroma/.gitkeep
-/data/sqlite/*
-!/data/sqlite/.gitkeep
-/data/minio/*
-!/data/minio/.gitkeep
+# 任意层级的 data/ 都不入库：根目录一份，apps/api 启动时还会生成自己的一份
+**/data/uploads/
+**/data/chroma/
+**/data/sqlite/
+**/data/minio/
+**/data/*.db
+**/data/*.sqlite
+**/data/*.sqlite3
 *.sqlite
 *.sqlite3
 *.db

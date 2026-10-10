@@ -14,6 +14,7 @@ import { create } from "zustand";
 import { absoluteUrl } from "@/lib/utils";
 import { streamPost } from "@/lib/sse-client";
 import { chatApi } from "@/features/chat/api/chat-api";
+import type { RecalledMemory } from "@/features/memory/types";
 import {
   toMessage,
   toSession,
@@ -39,6 +40,8 @@ interface ChatState {
   model: string | null;
   /** 后端是否在无 Key 情况下走了本地降级 */
   mocked: boolean;
+  /** 本轮召回的长期记忆，用来在界面上展示「AI 想起了什么」 */
+  recalledMemories: RecalledMemory[];
   error: string | null;
 
   loadSessions: () => Promise<void>;
@@ -59,6 +62,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   emotionConfidence: 0,
   model: null,
   mocked: false,
+  recalledMemories: [],
   error: null,
 
   async loadSessions() {
@@ -147,6 +151,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     set((state) => ({
       sending: true,
       error: null,
+      recalledMemories: [],
       messages: {
         ...state.messages,
         [activeSessionId]: [...(state.messages[activeSessionId] ?? []), userMessage, streamingMessage],
@@ -194,6 +199,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
                 const payload = raw as StreamEmotionPayload;
                 set({ emotion: payload.tag, emotionConfidence: payload.confidence });
                 patch({ emotion: payload.tag });
+                break;
+              }
+              case "memory": {
+                const payload = raw as { items: RecalledMemory[] };
+                set({ recalledMemories: payload.items ?? [] });
                 break;
               }
               case "token":
