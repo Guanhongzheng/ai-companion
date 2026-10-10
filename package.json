@@ -12,6 +12,7 @@
   "scripts": {
     "dev:web": "node scripts/dev-web.mjs",
     "dev:api": "node scripts/dev-api.mjs",
+    "dev:music": "node scripts/dev-music.mjs",
     "build": "pnpm --filter @ai-companion/web build",
     "start": "pnpm --filter @ai-companion/web start",
     "lint": "pnpm -r --if-present lint",

@@ -56,6 +56,7 @@ ai-companion/
 | --- | --- |
 | `dev-web.mjs` | 启动前端开发服务（next dev），不依赖 pnpm/npm |
 | `dev-api.mjs` | 启动后端开发服务（uvicorn --reload），自动探测 Python 解释器 |
+| `dev-music.mjs` | 启动网易云音乐 API（可选功能，依赖项目外的第三方服务源码） |
 
 `scripts/` 下的启动脚本统一写成 **Node 脚本**（`*.mjs`）而不是 shell 脚本：
 Windows / macOS / Linux 都能直接 `node xxx.mjs` 运行，不必分别维护 `.sh` 和 `.bat`。

@@ -1,8 +1,19 @@
+# ============================================================
 # ai-companion 本地开发编排
+#
+# ⚠️ 使用前必读
+#  1. 需要 Docker Desktop，而它在 Windows 上依赖 WSL2：
+#     先用管理员 PowerShell 执行 `wsl --install` 并重启，否则引擎根本起不来
+#  2. Docker Hub 在国内常连不上，建议在 Docker Desktop → Settings → Docker Engine 里配置
+#     "registry-mirrors": ["https://docker.m.daocloud.io"]，否则拉不动镜像
+#  3. 不想装 Docker 的话，对话 / 情绪识别 / 粒子壁纸全都正常工作，
+#     只有 music-api（音乐联动）需要单独起服务，见 README「音乐联动」一节
+#
 # 用法：
 #   docker compose up -d                     只起 web + api
-#   docker compose --profile infra up -d     额外起 postgres + chroma
+#   docker compose --profile infra up -d     额外拉起 postgres + chroma + music-api
 #   docker compose logs -f api
+# ============================================================
 
 services:
   web:

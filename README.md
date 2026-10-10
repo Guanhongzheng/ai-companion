@@ -213,14 +213,38 @@ npm run dev:api      # http://localhost:8000  (Swagger: /docs)
 几乎静止、背景渐变转成暗蓝色系。再发「气死我了」，字体变粗体、字距收紧、粒子暴涨到
 340 个并剧烈抖动。再发「好期待啊」，圆体放大、粒子加速到最快。
 
-**音乐联动**（可选）：
+**音乐联动**（可选，纯加分项，不影响其他功能）：
+
+需要单独跑一个网易云音乐 API 服务。推荐用 Node 直接跑，不需要 Docker / WSL / 重启：
 
 ```bash
-docker compose --profile infra up -d music-api
+# 一次性准备（放在项目外的 tools 目录，避免污染仓库）
+git clone --depth 1 https://github.com/neteasecloudmusicapienhanced/api-enhanced.git
+cd api-enhanced
+npm install --ignore-scripts        # 国内源见下方注意事项
+
+# 每次启动（在 ai-companion 项目根目录执行）
+npm run dev:music                    # 监听 3001
 ```
 
-启动后右下角「情绪歌单」面板会按当前情绪检索歌曲；播放时音频频谱接管壁纸，
-低频越强粒子越大、整体呼吸越明显。服务没启动时面板会给出启动命令，不影响其他功能。
+服务默认在 `../../tools/api-enhanced` 找，放别处就用环境变量指定：
+
+```bash
+AI_COMPANION_MUSIC_DIR=/你的路径 npm run dev:music
+```
+
+> ⚠️ 三个踩过的坑：
+> 1. **用 `npm install` 而不是 `pnpm install`** —— 该项目的 `prepare` 脚本会调 `husky install`，
+>    失败后 pnpm 只装上 devDependencies，生产依赖全部缺失且不报错
+> 2. **必须 `--ignore-scripts`**，否则 husky 那步会中断安装
+> 3. 该服务内部的 HTTP 客户端会读代理环境变量，指向不可用的代理会导致全部请求失败；
+>    `dev-music.mjs` 已经帮你清空了，手动启动的话记得自己处理
+
+也可以用 Docker（`docker compose --profile infra up -d music-api`），但需要先装好 WSL2
+并在 Docker Desktop 配置 registry-mirrors，详见 `docker-compose.yml` 顶部注释。
+
+服务起来后，右下角「情绪歌单」面板会自动探测并按当前情绪检索歌曲；播放时音频频谱接管
+壁纸，低频越强粒子越大、整体呼吸越明显。服务没启动时面板会提示启动命令。
 
 ### 4. Docker Compose 一键启动（可选）
 
