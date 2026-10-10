@@ -7,12 +7,16 @@
 - [ ] 前端能通过 SSE 拿到后端的流式假数据
 - [ ] Docker Compose 本地一把起
 
-## M1 · 对话中枢 MVP
+## M1 · 对话中枢 MVP（已完成第一轮）
 
-- [ ] 会话列表（AI / 好友 / 群聊三类）+ 对话窗口
-- [ ] 消息持久化（SQLite）+ 乐观更新
-- [ ] 接入 LiteLLM，跑通真实模型流式回复
-- [ ] react-virtuoso 虚拟滚动承载长会话
+- [x] 会话列表（AI / 好友 / 群聊三类）+ 对话窗口
+- [x] 消息持久化（SQLite + SQLAlchemy 2.0）
+- [x] SSE 流式渲染（自研 fetch 流解析，非 EventSource）
+- [x] 情绪识别接入，emotion 事件驱动前端主题
+- [x] react-virtuoso 虚拟滚动承载长会话
+- [x] LiteLLM 统一路由 + **无 Key 自动降级**（演示现场永不断链）
+- [ ] 接入真实模型 Key（等用户配置后即生效）
+- [ ] 乐观更新与断线重连
 
 ## M2 · 长期记忆（RAG）
 

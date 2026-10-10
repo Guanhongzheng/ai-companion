@@ -201,6 +201,13 @@ npm run dev:api      # http://localhost:8000  (Swagger: /docs)
 > 启动脚本内部不调用 pnpm，所以 `npm run` / `pnpm run` / 直接 `node scripts/dev-web.mjs`
 > 三种方式都能用，不受某个终端里有没有装 pnpm 的影响。
 
+打开 http://localhost:3000 后点「进入对话中枢」，或直接访问 http://localhost:3000/chat。
+
+**没配模型 Key 也能跑**：后端会自动降级为本地模拟回复，情绪识别、SSE 流式、消息落库全链路
+照常工作，界面右上角会显示「模拟模式」。想接真实模型，在 `apps/api/.env` 里填上任意一个
+`DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` /
+`GEMINI_API_KEY`，或设 `OLLAMA_BASE_URL` 走本地模型，重启即可自动切换。
+
 ### 4. Docker Compose 一键启动（可选）
 
 ```bash

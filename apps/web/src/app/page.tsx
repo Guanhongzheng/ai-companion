@@ -1,3 +1,6 @@
+import { ArrowRight } from "lucide-react";
+import Link from "next/link";
+
 import { cn } from "@/lib/utils";
 
 export default function HomePage() {
@@ -25,6 +28,13 @@ export default function HomePage() {
           <p className="max-w-xl text-balance text-muted-foreground">
             个性化多模态 AI 伴侣与社交对话平台 —— 让 AI 记住你、理解你，并随你的情绪而改变。
           </p>
+          <Link
+            href="/chat"
+            className="mt-2 inline-flex items-center gap-2 rounded-full bg-emotion-primary px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            进入对话中枢
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </header>
 
         <section className="grid w-full max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
