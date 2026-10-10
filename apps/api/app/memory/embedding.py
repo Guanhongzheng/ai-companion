@@ -30,6 +30,7 @@ from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from app.core.config import settings
+from app.core.overrides import ModelOverride
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +125,9 @@ class CloudEmbedder:
 
     name = "cloud"
 
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(self, model: str | None = None, api_key: str | None = None) -> None:
         self.model = _with_provider(model or settings.default_embedding_model)
+        self.api_key = api_key
 
     @property
     def dim(self) -> int:
@@ -140,7 +142,11 @@ class CloudEmbedder:
     async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         from litellm import aembedding
 
-        resp = await aembedding(model=self.model, input=list(texts))
+        resp = await aembedding(
+            model=self.model,
+            input=list(texts),
+            **({"api_key": self.api_key} if self.api_key else {}),
+        )
         # 保证返回顺序与输入一致
         ordered = sorted(resp.data, key=lambda d: d.index)
         return [item["embedding"] for item in ordered]
@@ -172,7 +178,26 @@ def _with_provider(name: str) -> str:
 _cached: Embedder | None = None
 
 
-def _has_any_model_key() -> bool:
+def get_embedder(override: ModelOverride | None = None) -> Embedder:
+    """按优先级挑选向量化实现，结果缓存。
+
+    想强制指定时设环境变量 ``MEMORY_EMBEDDING_PROVIDER``：
+    ``hashing`` / ``sentence-transformers`` / ``cloud``
+
+    ``override`` 是用户在设置页填的 Embedding 配置 —— 这种��况**不缓存**，
+    否则会把一个用户的 Key 串给下一个人。
+    """
+    if override is not None and override.has_embedding:
+        return CloudEmbedder(
+            model=override.embedding_model,
+            api_key=override.resolved_embedding_key,
+        )
+
+    global _cached
+    if _cached is not None:
+        return _cached
+    _cached = _select_embedder()
+    return _cached
     return bool(
         settings.openai_api_key
         or settings.dashscope_api_key
@@ -182,16 +207,19 @@ def _has_any_model_key() -> bool:
     )
 
 
-def get_embedder() -> Embedder:
-    """按优先级挑选向量化实现，结果缓存。
+def _has_any_model_key() -> bool:
+    """服务端 .env 里是否配了任意一个模型 Key。"""
+    return bool(
+        settings.openai_api_key
+        or settings.dashscope_api_key
+        or settings.deepseek_api_key
+        or settings.anthropic_api_key
+        or settings.gemini_api_key
+    )
 
-    想强制指定时设环境变量 ``MEMORY_EMBEDDING_PROVIDER``：
-    ``hashing`` / ``sentence-transformers`` / ``cloud``
-    """
-    global _cached
-    if _cached is not None:
-        return _cached
 
+def _select_embedder() -> Embedder:
+    """按优先级探测可用实现，每实现失败就降级到下一个。"""
     forced = (settings.memory_embedding_provider or "").strip().lower()
     # 默认按「本地模型 → 云端 → 哈希」依次尝试
     candidates = [forced] if forced else ["sentence-transformers", "cloud", "hashing"]
@@ -211,13 +239,10 @@ def get_embedder() -> Embedder:
             continue
         else:
             logger.info("记忆向量化使用：%s（dim=%d）", embedder.name, embedder.dim)
-            _cached = embedder
-            return _cached
+            return embedder
 
-    fallback = HashingEmbedder()
     logger.warning("所有向量化实现都不可用，降级为哈希实现")
-    _cached = fallback
-    return fallback
+    return HashingEmbedder()
 
 
 def reset_embedder() -> None:

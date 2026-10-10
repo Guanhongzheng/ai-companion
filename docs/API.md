@@ -67,6 +67,31 @@ Embedding Key 即可，**上层代码一行都不用改**。
 设 `MEMORY_ENCRYPT=true` 与 `MEMORY_ENCRYPTION_KEY` 后，正文以 Fernet 加密落库。
 **未配置密钥时不会静默降级为明文**，接口 `/stats` 的 `encrypted` 字段会如实告知当前状态。
 
+## 设置（BYOK）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/settings/status` | 查看当前生效的模型来源（Key 脱敏） |
+| POST | `/api/v1/settings/validate` | 用最小 token 实测 Key 与模型是否可用 |
+
+### 用户自带 Key 的传参方式
+
+这些接口**自身不带 Key**，Key 通过请求头传入，与对话接口共用同一套头：
+
+| 请求头 | 说明 |
+| --- | --- |
+| `X-Model-Key` | 对话模型的 API Key |
+| `X-Model-Name` | 模型名，可带 provider 前缀（`deepseek-chat` 等价于 `deepseek/deepseek-chat`） |
+| `X-Embedding-Key` | Embedding Key，留空则复用 `X-Model-Key` |
+| `X-Embedding-Model` | Embedding 模型名，如 `text-embedding-v3` |
+
+**安全边界**：Key 只存在于浏览器的 localStorage，请求时通过上述头传给本地后端，
+后端**不落盘、不入库、不写日志**，只在该次请求的生命周期内存在于内存。
+日志里只以 `sk-a***1234` 的形式出现。
+
+Key 无效、模型不存在、余额不足、超时等异常会被翻译成中文短句
+（见 `app/core/errors.py`），不会把厂商原始堆栈或 Key 片段返回给前端。
+
 ## 对话
 
 | 方法 | 路径 | 说明 |

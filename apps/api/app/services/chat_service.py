@@ -16,10 +16,13 @@ import json
 import logging
 from collections.abc import AsyncIterator
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as OrmSession
 
 from app.core import emotion as emotion_mod
 from app.core.config import settings
+from app.core.errors import friendly_model_error
+from app.core.overrides import ModelOverride
 from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
@@ -123,12 +126,33 @@ def _credential_for(model: str) -> str:
     )
 
 
-def has_credentials(model: str | None = None) -> bool:
-    """是否具备调用真实模型的条件。"""
+def has_credentials(model: str | None = None, override: ModelOverride | None = None) -> bool:
+    """是否具备调用真实模型的条件。
+
+    用户自带 Key 时优先用用户的 —— 这样即使服务端 .env 一个 Key 都没配，
+    用户自己填了就能用真实模型。
+    """
+    if override is not None and override.has_model:
+        return True
     return bool(_credential_for(normalize_model(model)))
 
 
-async def _stream_tokens(messages: list[dict[str, str]], model: str) -> AsyncIterator[str]:
+def resolve_model_and_key(
+    model: str | None, override: ModelOverride | None = None
+) -> tuple[str, str | None]:
+    """决定这次请求实际用哪个模型、用谁的 Key。
+
+    返回 ``(模型名, api_key)``；``api_key`` 为 None 表示交给 LiteLLM 自己解析
+    （对应服务端 .env 里已配好的场景）。
+    """
+    if override is not None and override.has_model:
+        return normalize_model(override.model_name), override.model_key
+    return normalize_model(model), None
+
+
+async def _stream_tokens(
+    messages: list[dict[str, str]], model: str, api_key: str | None = None
+) -> AsyncIterator[str]:
     """经 LiteLLM 流式调用真实模型。"""
     from litellm import acompletion
 
@@ -138,6 +162,7 @@ async def _stream_tokens(messages: list[dict[str, str]], model: str) -> AsyncIte
         stream=True,
         temperature=0.8,
         max_tokens=1024,
+        **({"api_key": api_key} if api_key else {}),
     )
     async for chunk in response:
         choices = getattr(chunk, "choices", None) or []
@@ -216,15 +241,15 @@ async def _recall_memories(db: OrmSession, query: str) -> list[dict[str, object]
 
 
 async def stream_chat_events(
-    db: OrmSession, req: ChatRequest
+    db: OrmSession, req: ChatRequest, override: ModelOverride | None = None
 ) -> AsyncIterator[tuple[str, object]]:
     """产出完整的 SSE 事件序列。
 
     副作用：会把用户消息与 AI 回复落库，并更新会话时间。
     """
     session = session_service.get_or_404(db, req.session_id)
-    model = normalize_model(req.model)
-    real = has_credentials(model)
+    model, api_key = resolve_model_and_key(req.model, override)
+    real = has_credentials(req.model, override)
 
     yield "meta", StreamMeta(session_id=session.id, model=model, mocked=not real)
 
@@ -252,7 +277,7 @@ async def stream_chat_events(
 
     chunks: list[str] = []
     try:
-        source = _stream_tokens(messages, model) if real else _mock_tokens(
+        source = _stream_tokens(messages, model, api_key) if real else _mock_tokens(
             _mock_reply(result.tag, latest_user)
         )
         async for text in source:
@@ -260,7 +285,7 @@ async def stream_chat_events(
             yield "token", StreamToken(text=text)
     except Exception as exc:
         logger.exception("模型调用失败")
-        yield "error", StreamError(message=f"模型调用失败：{exc}")
+        yield "error", StreamError(message=friendly_model_error(exc))
         yield "done", StreamDone(finish_reason="error")
         return
 
@@ -279,11 +304,13 @@ def _mock_reply(tag: str, user_text: str) -> str:
     return NO_KEY_HINT
 
 
-async def complete_chat(db: OrmSession, req: ChatRequest) -> ChatResponse:
+async def complete_chat(
+    db: OrmSession, req: ChatRequest, override: ModelOverride | None = None
+) -> ChatResponse:
     """非流式对话：内部复用同一套编排，只是把 token 收集起来。"""
     session = session_service.get_or_404(db, req.session_id)
-    model = normalize_model(req.model)
-    real = has_credentials(model)
+    model, api_key = resolve_model_and_key(req.model, override)
+    real = has_credentials(req.model, override)
 
     for msg in req.messages:
         session_service.append_message(db, session, sender_type=msg.role, content=msg.content)
@@ -296,8 +323,22 @@ async def complete_chat(db: OrmSession, req: ChatRequest) -> ChatResponse:
     if real:
         from litellm import acompletion
 
-        response = await acompletion(model=model, messages=messages, temperature=0.8)
-        reply = response.choices[0].message.content or ""
+        try:
+            response = await acompletion(
+                model=model,
+                messages=messages,
+                temperature=0.8,
+                **({"api_key": api_key} if api_key else {}),
+            )
+            reply = response.choices[0].message.content or ""
+        except Exception as exc:
+            # 用户填错 Key / 网络不通都会走到这里，必须给能看懂的中文提示，
+            # 而不是把厂商的原始堆栈甩出去
+            logger.warning("模型调用失败：%s", friendly_model_error(exc))
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=friendly_model_error(exc),
+            ) from exc
     else:
         reply = _mock_reply(result.tag, req.messages[-1].content if req.messages else "")
 

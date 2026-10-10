@@ -2,21 +2,11 @@
  * 对话中枢的接口封装。只负责 HTTP，不含任何 UI 逻辑。
  */
 
-import { absoluteUrl } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 import type { MessageDto, SessionDto } from "../types";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(absoluteUrl(path), {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${response.status} ${detail}`);
-  }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
-}
+// 走统一封装，才能带上用户自己填的 API Key
+const request = apiFetch;
 
 export const chatApi = {
   listSessions: () => request<SessionDto[]>("/api/v1/sessions"),

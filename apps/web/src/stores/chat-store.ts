@@ -12,6 +12,7 @@ import type { EmotionTag, Message, Session } from "@ai-companion/shared";
 import { create } from "zustand";
 
 import { absoluteUrl } from "@/lib/utils";
+import { readByokHeaders } from "@/lib/api-client";
 import { streamPost } from "@/lib/sse-client";
 import { chatApi } from "@/features/chat/api/chat-api";
 import type { RecalledMemory } from "@/features/memory/types";
@@ -225,6 +226,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           },
           onError: (error) => set({ error: `连接中断：${error.message}` }),
         },
+        undefined,
+        readByokHeaders(),
       );
     } catch (error) {
       set({ error: `发送失败：${describe(error)}` });

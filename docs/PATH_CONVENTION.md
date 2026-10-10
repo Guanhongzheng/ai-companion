@@ -97,7 +97,8 @@ src/
 │  │  └─ index.ts           对外出口（可选，避免深层相对路径）
 │  ├─ companion/            AI 伴侣与情绪自适应
 │  ├─ social/               真实社交辅助（润色 / 翻译 / 建议回复）
-│  ├─ memory/               记忆查看、编辑、导出
+│  ├─ memory/               记忆面板：查看、语义搜索、编辑、导出、清空
+│  ├─ settings/             设置：自带 API Key（BYOK）
 │  ├─ theme/                情绪驱动的主题系统
 │  ├─ music/                音乐播放与联动
 │  └─ wallpaper/            Three.js 动态壁纸 + 音频可视化
@@ -153,7 +154,7 @@ apps/api/
 │  │  ├─ prompts/           提示词（*.jinja 或 *.md）
 │  │  └─ tools/             工具（含 MCP 适配）
 │  ├─ services/             业务逻辑层，路由只做参数校验 + 调 service
-│  ├─ memory/               RAG：chunk / embed / store / retrieve / rerank
+│  ├─ memory/               RAG：embedding / extractor / store / retriever
 │  ├─ multimodal/           asr / ocr / emotion / image_gen / tts
 │  ├─ models/               ORM 实体（SQLAlchemy）
 │  ├─ schemas/              Pydantic 出入参

@@ -42,6 +42,12 @@ export default function HomePage() {
             >
               查看长期记忆
             </Link>
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              设置
+            </Link>
           </div>
         </header>
 

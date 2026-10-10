@@ -44,12 +44,14 @@ export async function streamPost(
   body: unknown,
   handlers: SseHandlers,
   signal?: AbortSignal,
+  headers: Record<string, string> = {},
 ): Promise<void> {
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      ...headers,
     },
     body: JSON.stringify(body),
     signal,

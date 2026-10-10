@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session as OrmSession
 from sse_starlette.sse import EventSourceResponse
 
+from app.core.overrides import ModelOverrideDep
 from app.db.session import get_db
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services import chat_service
@@ -19,12 +20,12 @@ DbSession = Annotated[OrmSession, Depends(get_db)]
 
 
 @router.post("", response_model=ChatResponse, summary="对话（非流式）")
-async def chat(req: ChatRequest, db: DbSession) -> ChatResponse:
-    return await chat_service.complete_chat(db, req)
+async def chat(req: ChatRequest, db: DbSession, override: ModelOverrideDep) -> ChatResponse:
+    return await chat_service.complete_chat(db, req, override)
 
 
 @router.post("/stream", summary="对话（SSE 流式）")
-async def chat_stream(req: ChatRequest, db: DbSession) -> EventSourceResponse:
+async def chat_stream(req: ChatRequest, db: DbSession, override: ModelOverrideDep) -> EventSourceResponse:
     """SSE 事件协议（前端按 event 名分发）：
 
     - `meta`    : 会话元信息（含实际使用的模型、是否降级）
@@ -35,7 +36,7 @@ async def chat_stream(req: ChatRequest, db: DbSession) -> EventSourceResponse:
     """
 
     async def event_generator():
-        async for name, payload in chat_service.stream_chat_events(db, req):
+        async for name, payload in chat_service.stream_chat_events(db, req, override):
             yield {"event": name, "data": chat_service.dump(payload)}
 
     return EventSourceResponse(event_generator())

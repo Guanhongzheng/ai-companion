@@ -1,12 +1,13 @@
 "use client";
 
 import { emotionThemeOf } from "@ai-companion/shared";
-import { AlertCircle, Brain, Sparkles, X } from "lucide-react";
+import { AlertCircle, Brain, KeyRound, Settings, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
 
 import { useChatStore } from "@/stores/chat-store";
 import { MusicDock } from "@/features/music/components/MusicDock";
+import { currentModelName, useSettingsStore } from "@/features/settings/store/settings-store";
 import { applyEmotionTheme } from "@/features/theme/lib/apply-emotion-theme";
 import { EmotionWallpaper } from "@/features/wallpaper/components/EmotionWallpaper";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,11 @@ export function ChatWindow() {
   useEffect(() => {
     applyEmotionTheme(emotion);
   }, [emotion]);
+
+  const byokEnabled = useSettingsStore((s) => s.enabled);
+  const byokProvider = useSettingsStore((s) => s.providerId);
+  const byokModelName = useSettingsStore((s) => s.modelName);
+  const byokModel = byokEnabled ? currentModelName({ enabled: byokEnabled, providerId: byokProvider, modelName: byokModelName }) : "";
 
   const active = sessions.find((s) => s.id === activeSessionId);
   const theme = emotionThemeOf(emotion);
@@ -86,6 +92,16 @@ export function ChatWindow() {
               </span>
             )}
 
+            {byokModel && (
+              <span
+                title={`正在使用你自己填的 Key 调用 ${byokModel}`}
+                className="flex items-center gap-1 rounded-full bg-emotion-primary/15 px-2.5 py-1 text-xs text-emotion-primary"
+              >
+                <KeyRound className="h-3 w-3" />
+                自带 Key
+              </span>
+            )}
+
             <Link
               href="/memory"
               title="管理长期记忆"
@@ -93,6 +109,14 @@ export function ChatWindow() {
             >
               <Brain className="h-3 w-3" />
               记忆
+            </Link>
+
+            <Link
+              href="/settings"
+              title="设置：自带 API Key"
+              className="rounded-full bg-muted p-1.5 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+            >
+              <Settings className="h-3.5 w-3.5" />
             </Link>
           </div>
         </header>

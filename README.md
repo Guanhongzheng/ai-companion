@@ -202,7 +202,18 @@ npm run dev:api      # http://localhost:8000  (Swagger: /docs)
 > 三种方式都能用，不受某个终端里有没有装 pnpm 的影响。
 
 打开 http://localhost:3000 后点「进入对话中枢」，或直接访问 http://localhost:3000/chat。
-长期记忆面板在 http://localhost:3000/memory。
+长期记忆面板在 http://localhost:3000/memory，设置页在 http://localhost:3000/settings。
+
+### 不想配 .env？用设置页自带 Key
+
+打开 http://localhost:3000/settings，选服务商、粘贴 API Key、点「测试连接」就能用。
+支持 DeepSeek、阿里云百炼、OpenAI、Claude、Gemini、硅基流动、Moonshot、智谱和本地 Ollama。
+
+**你的 Key 只存在你这台设备的浏览器里**，每次请求通过请求头（`X-Model-Key`）传给本地后端，
+后端不落盘、不入库、不写日志。点「清除全部配置」即可彻底删除。
+
+设置页还能单独配置 Embedding 模型（比如阿里云的 `text-embedding-v3`），
+启用后记忆检索就从「字面匹配」升级为「语义匹配」。
 
 **记忆联动看效果**：在 `/chat` 里问一句「我住的地方附近有什么好吃的」，回复上方的
 「AI 想起了：」会列出它召回的记忆；换到 `/memory` 页面可以搜索、编辑、删除、导出，

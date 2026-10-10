@@ -1,5 +1,7 @@
 """RAG 记忆：抽取、向量化、召回重排、CRUD、导出清空。"""
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app.core import crypto
@@ -152,7 +154,61 @@ def test_export_and_clear(client: TestClient) -> None:
     assert client.get("/api/v1/memory").json() == []
 
 
-# ---------------------------------------------------------------- 加密
+# ---------------------------------------------------------------- BYOK
+
+
+def test_settings_status_without_key(client: TestClient) -> None:
+    """没有带 Key 时，一切走服务端配置。"""
+    resp = client.get("/api/v1/settings/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["using_user_key"] is False
+    assert body["key_hint"] == "<空>"
+    assert body["model"] == body["server_default_model"]
+
+
+def test_settings_status_masks_key(client: TestClient) -> None:
+    """带 Key 时只回传脱敏值，绝不回传完整 Key。"""
+    secret = "sk-super-secret-key-1234567890"
+    body = client.get(
+        "/api/v1/settings/status",
+        headers={"X-Model-Key": secret, "X-Model-Name": "deepseek-chat"},
+    ).json()
+    assert body["using_user_key"] is True
+    assert body["model"] == "deepseek/deepseek-chat"
+    assert secret not in json.dumps(body)
+    assert body["key_hint"] == "sk-s***7890"
+
+
+def test_validate_without_key(client: TestClient) -> None:
+    body = client.post("/api/v1/settings/validate").json()
+    assert body["ok"] is False
+    assert "Key" in body["message"]
+
+
+def test_chat_uses_user_key_model(client: TestClient, session_id: str) -> None:
+    """带上自己的 Key 后应走真实模型分支；Key 无效时返回 502 + 中文提示而非堆栈。"""
+    secret = "sk-not-a-real-key-abcdefghijklmnop"
+    resp = client.post(
+        "/api/v1/chat",
+        json={"session_id": session_id, "messages": [{"role": "user", "content": "你好"}]},
+        headers={"X-Model-Key": secret, "X-Model-Name": "deepseek-chat"},
+    )
+    # 真实调用必然失败（Key 是假的），关键是要变成可读的 502 而不是 500 堆栈
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "Key" in detail or "失败" in detail
+    # 原始异常里可能带 Key 片段，绝不能回显
+    assert secret not in detail
+    assert "Traceback" not in detail
+
+
+def test_mask_helper() -> None:
+    from app.core.overrides import mask
+
+    assert mask(None) == "<空>"
+    assert mask("sk-1234") == "sk***34"
+    assert mask("sk-abcdefghijklmnop") == "sk-a***mnop"
 
 
 def test_crypto_roundtrip() -> None:
