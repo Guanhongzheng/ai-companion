@@ -53,3 +53,20 @@ class MemoryStats(BaseModel):
     encrypted: bool
     vector_store: str
     embedder: str
+    #: 仍含敏感信息、需要清洗的记忆条数
+    sensitive: int
+    #: 脱敏总开关是否打开（关掉时前端要如实提示「当前不做脱敏」）
+    safety_filter: bool
+
+
+class ScrubOut(BaseModel):
+    """隐私清洗结果。"""
+
+    #: 命中的记忆条数
+    scanned: int
+    #: 实际脱敏的条数
+    cleaned: int
+    #: 涉及的敏感类型，如 ["id_card", "phone"]
+    kinds: list[str] = Field(default_factory=list)
+    #: 被清洗的记忆 id，前端据此高亮刷新
+    ids: list[str] = Field(default_factory=list)

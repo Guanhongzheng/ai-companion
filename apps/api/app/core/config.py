@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     memory_top_n: int = 3
     #: 去重阈值：新记忆与已有记忆相似度超过它则视为重复
     memory_dedup_threshold: float = 0.86
+    #: 对话过程中自动抽取长期记忆。关掉后只能靠 /memory/ingest 手动写入
+    memory_auto_ingest: bool = True
     #: 是否加密记忆正文
     memory_encrypt: bool = False
 

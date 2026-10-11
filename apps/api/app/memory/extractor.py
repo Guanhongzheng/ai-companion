@@ -7,6 +7,10 @@
 
 规则法覆盖的是个人助手场景里最高频的几类信息：身份、职业、居住、
 喜好、厌恶、宠物、家人、习惯。抽取不准的地方宁可不抽 —— 宁缺毋滥。
+
+🔒 无论走哪条路线，出口都会过一遍 :mod:`app.core.safety` 脱敏。
+这不是可选项：LLM 的判断标准是「稳定事实」，而手机号和身份证
+恰恰是最稳定的事实，不拦就会把用户的身份证写进向量库。
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from app.core import safety
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -62,11 +67,18 @@ class Candidate:
 
 
 def extract_by_rules(text: str, *, min_weight: float = 0.6) -> list[Candidate]:
-    """规则抽取。同一段文本里同类型只保留权重最高的一条。"""
+    """规则抽取。一句话最多归一类，但**不同句子之间互不覆盖**。
+
+    ⚠️ 曾经在这里按类型去重（同一段文本里 profile 只留权重最高的一条），
+    结果「我是一名海洋生物学家，我养了三只水母」只会留下后者 ——
+    职业信息被宠物信息顶掉了。两句都是 profile，但它们是两条独立的事实。
+    去重是存储层的职责（``add_memory`` 用向量相似度判重），抽取器只管抽。
+    """
     if not text.strip():
         return []
 
-    best: dict[str, Candidate] = {}
+    found: list[Candidate] = []
+    seen: set[tuple[str, str]] = set()
     for raw in _SENT_SPLIT.split(text):
         sentence = raw.strip()
         if not sentence or len(sentence) > 120 or _NOISE.match(sentence):
@@ -78,13 +90,14 @@ def extract_by_rules(text: str, *, min_weight: float = 0.6) -> list[Candidate]:
                 continue
             # 句子过长时截到匹配处附近，避免把整段闲聊都存进去
             content = sentence if len(sentence) <= 60 else sentence[:60]
-            current = best.get(kind)
-            if current is None or weight > current.weight:
-                best[kind] = Candidate(content=content, type=kind, weight=weight)
+            key = (kind, content)
+            if key not in seen:
+                seen.add(key)
+                found.append(Candidate(content=content, type=kind, weight=weight))
             break
 
     return sorted(
-        (c for c in best.values() if c.weight >= min_weight),
+        (c for c in found if c.weight >= min_weight),
         key=lambda c: c.weight,
         reverse=True,
     )
@@ -97,8 +110,11 @@ _LLM_PROMPT = """从下面的对话中，抽取关于「用户本人」的长期
 要求：
 1. 只抽取稳定事实（身份、职业、居住地、喜好、厌恶、家人、宠物、长期习惯）
 2. 不要抽取：情绪状态、寒暄、临时任务、你对他说的话
-3. 每条独立成句，不超过 30 字
-4. 没有值得记的就返回空数组
+3. 🔒 **绝对不要抽取任何敏感信息**：手机号、身份证号、银行卡号、邮箱、
+   微信号 / QQ 号、API Key、密码、门牌号。哪怕它们看起来是稳定事实也不行 ——
+   这条比第 1 条优先级更高。
+4. 每条独立成句，不超过 30 字
+5. 没有值得记的就返回空数组
 
 只输出 JSON 数组，元素形如 {{"content": "...", "type": "profile|preference|fact|event"}}
 
@@ -147,10 +163,39 @@ async def extract_by_llm(text: str) -> list[Candidate]:
 
 
 async def extract(text: str) -> list[Candidate]:
-    """统一入口：有Key 走 LLM，否则走规则。"""
+    """统一入口：有Key 走 LLM，否则走规则。
+
+    出口统一脱敏 —— 这是写在这里而不是只在某条路径里的原因：
+    任何一条路径漏掉，都是把用户身份证写进向量库。
+    """
+    candidates: list[Candidate]
     if _has_model_key():
         candidates = await extract_by_llm(text)
-        if candidates:
-            return candidates
-        return []
-    return extract_by_rules(text)
+        if not candidates:
+            return []
+    else:
+        candidates = extract_by_rules(text)
+
+    return _scrub(candidates)
+
+
+def _scrub(candidates: list[Candidate]) -> list[Candidate]:
+    """把候选记忆里的敏感信息换成掩码。
+
+    只打码不丢条 —— 「手机号138****5678」虽然没什么用，但比整条消失更好：
+    用户在记忆面板里还能看出「哦它记了这个」，不会出现凭空少一条的困惑。
+    """
+    if not settings.enable_safety_filter:
+        return candidates
+
+    out: list[Candidate] = []
+    for item in candidates:
+        cleaned = safety.redact(item.content)
+        if cleaned != item.content:
+            logger.info(
+                "记忆抽取结果含 %s，已脱敏后入库", "、".join(s.value for s in safety.summarize(item.content))
+            )
+        out.append(
+            Candidate(content=cleaned, type=item.type, weight=item.weight)
+        )
+    return out

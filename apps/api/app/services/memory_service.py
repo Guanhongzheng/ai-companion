@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -14,7 +15,7 @@ from datetime import UTC, datetime
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as OrmSession
 
-from app.core import crypto
+from app.core import crypto, safety
 from app.core.config import settings
 from app.memory.embedding import embed_query_with_fallback, get_embedder
 from app.memory.extractor import MEMORY_TYPES, extract
@@ -269,6 +270,62 @@ def clear_all(db: OrmSession) -> int:
     return len(rows)
 
 
+# ---------------------------------------------------------------- 隐私清洗
+
+
+def scan_sensitive(db: OrmSession) -> list[tuple[MemoryModel, list[safety.SecretKind]]]:
+    """扫出所有还含敏感信息的记忆。只报告，不改动。"""
+    hits: list[tuple[MemoryModel, list[safety.SecretKind]]] = []
+    for row in db.execute(select(MemoryModel)).scalars().all():
+        kinds = safety.summarize(crypto.decrypt(row.content))
+        if kinds:
+            hits.append((row, kinds))
+    return hits
+
+
+async def scrub_sensitive(db: OrmSession) -> dict[str, object]:
+    """把已入库记忆里的敏感信息洗成掩码。
+
+    为什么需要这一步：修复抽取漏洞之前写入的记忆还躺在库里。
+    改正文**必须同时重建向量** —— 否则向量还是按「用户身份证号是310...」
+    算的，检索时照样把这条命中，用户在界面上看到的仍是原文。
+    """
+    targets = scan_sensitive(db)
+    if not targets:
+        return {"scanned": 0, "cleaned": 0, "kinds": [], "ids": []}
+
+    by_kind: dict[str, int] = {}
+    ids: list[str] = []
+    plains: list[str] = []
+    vectors: list[list[float]] = []
+
+    for row, kinds in targets:
+        cleaned = safety.redact(crypto.decrypt(row.content))
+        row.content = crypto.encrypt(cleaned)
+        row.updated_at = _now()
+        ids.append(row.id)
+        plains.append(cleaned)
+        vectors.append(await embed_query_with_fallback(cleaned))
+        for kind in kinds:
+            by_kind[kind.value] = by_kind.get(kind.value, 0) + 1
+
+    db.commit()
+    # SQL 和向量库必须同步，否则检索命中的是旧内容
+    get_store().upsert(ids, vectors, plains)
+
+    logger.info(
+        "隐私清洗：%d 条记忆被脱敏（%s）",
+        len(ids),
+        "、".join(f"{k}x{v}" for k, v in sorted(by_kind.items())),
+    )
+    return {
+        "scanned": len(targets),
+        "cleaned": len(ids),
+        "kinds": sorted(by_kind),
+        "ids": ids,
+    }
+
+
 def export_all(db: OrmSession) -> str:
     """导出为 JSON 字符串（正文一律解密，方便用户自行备份）。"""
     rows = db.execute(select(MemoryModel).order_by(MemoryModel.created_at)).scalars().all()
@@ -341,6 +398,58 @@ def _schedule_index(rows: list[MemoryModel], plains: list[str]) -> None:
     task.add_done_callback(_log_task_failure("记忆索引补建"))
 
 
+# ---------------------------------------------------------------- 自动抽取
+
+#: 短于这个长度的消息不可能是「值得长期记住的事实」，直接跳过抽取
+_MIN_INGEST_CHARS = 6
+
+
+def worth_extracting(text: str) -> bool:
+    """零成本的前置门槛，决定这条消息值不值得跑一遍抽取。
+
+    这一步看着简单，但省掉的是实打实的模型调用 —— 配了 Key 之后
+    抽取是一次 LLM 请求，对话里绝大多数消息（「嗯」「好的」「在吗」）
+    根本不该触发。没有门槛的话，等于每说一句话都调一次模型。
+    """
+    stripped = text.strip()
+    return len(stripped) >= _MIN_INGEST_CHARS and "我" in stripped
+
+
+def schedule_auto_ingest(text: str, session_id: str | None = None) -> bool:
+    """把一轮对话丢进后台抽取。非阻塞，失败不影响本轮回复。
+
+    为什么必须是后台任务：
+    * 抽取可能是一次 LLM 请求，压在 SSE 流前面会拖慢首字响应
+    * 本轮回复**不该**用刚抽出来的记忆（那等于让 AI 自问自答地引用自己的笔记）
+
+    任务内部自己开 session —— 调用方（SSE 处理器）的 session 由请求生命周期管理，
+    等后台任务跑起来时它可能已经关闭了。
+    """
+    if not settings.memory_auto_ingest or not worth_extracting(text):
+        return False
+
+    payload = text.strip()
+
+    async def _run() -> None:
+        from app.db.session import SessionLocal
+
+        with SessionLocal() as s:
+            saved = await ingest_text(s, payload, session_id)
+        if saved:
+            logger.info("本轮自动记住了 %d 条：%s", len(saved), payload[:30])
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # 同步场景（测试、脚本）直接跑完，行为可预期
+        asyncio.run(_run())
+        return True
+
+    task = loop.create_task(_run())
+    task.add_done_callback(_log_task_failure("记忆自动抽取"))
+    return True
+
+
 def stats(db: OrmSession) -> dict[str, object]:
     rows = list(db.execute(select(MemoryModel)).scalars().all())
     by_type: dict[str, int] = {}
@@ -352,4 +461,9 @@ def stats(db: OrmSession) -> dict[str, object]:
         "encrypted": crypto.is_enabled(),
         "vector_store": get_store().name,
         "embedder": get_embedder().name,
+        # 如实告知有多少条还带着敏感信息，而不是默认「一切安全」
+        "sensitive": sum(
+            1 for r in rows if safety.detect(crypto.decrypt(r.content))
+        ),
+        "safety_filter": settings.enable_safety_filter,
     }

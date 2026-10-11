@@ -9,6 +9,7 @@ import {
   PinOff,
   Plus,
   Search,
+  ShieldCheck,
   Trash2,
   Wand2,
   X,
@@ -51,10 +52,31 @@ export function MemoryPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [scrubbing, setScrubbing] = useState(false);
+  const [scrubNote, setScrubNote] = useState<string | null>(null);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleScrub = async () => {
+    setScrubbing(true);
+    setScrubNote(null);
+    try {
+      const result = await memoryApi.scrub();
+      setScrubNote(
+        result.cleaned > 0
+          ? `已脱敏 ${result.cleaned} 条（${result.kinds.join("、")}）`
+          : "没有需要脱敏的记忆",
+      );
+      // 清洗会改内容，必须重新拉列表，否则看到的还是旧正文
+      await load();
+    } catch (error) {
+      setScrubNote(error instanceof Error ? error.message : "清洗失败");
+    } finally {
+      setScrubbing(false);
+    }
+  };
 
   const grouped = useMemo(() => {
     const source = query.trim() ? hits.map((h) => h.memory) : items;
@@ -131,6 +153,39 @@ export function MemoryPanel() {
           >
             {stats.encrypted ? "正文已加密" : "正文未加密"}
           </span>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5",
+              stats.sensitive > 0 ? "bg-destructive/15 text-destructive" : "bg-emotion-primary/15",
+            )}
+          >
+            {stats.safety_filter ? "自动脱敏已开" : "自动脱敏已关"}
+            {stats.sensitive > 0 && ` · ${stats.sensitive} 条待清洗`}
+          </span>
+        </div>
+      )}
+
+      {/* 有待清洗的敏感信息时才出现，避免平时占地方 */}
+      {stats && stats.sensitive > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+          <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+          <p className="mr-auto text-xs leading-relaxed">
+            有 {stats.sensitive} 条记忆里还留着手机号、身份证这类信息。
+            新写入的记忆会自动脱敏，但这些是之前存进去的。
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleScrub()}
+            disabled={scrubbing}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-white transition-opacity",
+              scrubbing ? "cursor-not-allowed opacity-50" : "bg-destructive hover:opacity-90",
+            )}
+          >
+            {scrubbing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+            {scrubbing ? "清洗中" : "立即脱敏"}
+          </button>
+          {scrubNote && <span className="text-xs text-muted-foreground">{scrubNote}</span>}
         </div>
       )}
 

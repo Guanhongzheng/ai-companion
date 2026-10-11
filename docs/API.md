@@ -37,10 +37,11 @@ Base URL：`http://localhost:8000`
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/memory` | 记忆列表，可 `?type=profile` 按类型过滤 |
-| GET | `/api/v1/memory/stats` | 统计：总数、分类、是否加密、向量化实现 |
+| GET | `/api/v1/memory/stats` | 统计：总数、分类、是否加密、向量化实现、**待清洗的敏感条数** |
 | GET | `/api/v1/memory/search?q=&top_n=` | 语义搜索，返回命中分数与重排方式 |
 | POST | `/api/v1/memory` | 手动新增，body `{ content, type }`，重复内容自动去重 |
 | POST | `/api/v1/memory/ingest` | 从一段文本自动抽取记忆，body `{ text }` |
+| POST | `/api/v1/memory/scrub` | **脱敏清洗**：把已入库记忆里的敏感信息换成掩码 |
 | PATCH | `/api/v1/memory/{id}` | 编辑，body `{ content?, type?, pinned? }` |
 | DELETE | `/api/v1/memory/{id}` | 删除单条（SQL 与向量库同时删） |
 | GET | `/api/v1/memory/export` | 导出 JSON（正文解密） |
@@ -66,6 +67,33 @@ Embedding Key 即可，**上层代码一行都不用改**。
 
 设 `MEMORY_ENCRYPT=true` 与 `MEMORY_ENCRYPTION_KEY` 后，正文以 Fernet 加密落库。
 **未配置密钥时不会静默降级为明文**，接口 `/stats` 的 `encrypted` 字段会如实告知当前状态。
+
+### 自动抽取（对话即记忆）
+
+对话过程中会自动把用户说的话抽成长期记忆（`MEMORY_AUTO_INGEST`，默认开）。
+
+* **只在后台跑**，不阻塞 SSE 流；且**本轮回复不会用到刚抽出来的记忆** ——
+  那等于让 AI 自问自答地引用自己的笔记
+* 有前置门槛：消息太短（< 6 字）或不含「我」直接跳过。
+  没有这道门槛的话，等于每说一句话就调一次模型
+* 抽取内容在入库前**必定经过脱敏**（见下）
+
+### 敏感信息脱敏
+
+记忆是从对话里提炼的**长期**数据，而模型抽取的判断标准是「这是稳定事实」——
+问题在于手机号、身份证号恰恰就是最稳定的事实。所以入库前必须拦一道。
+
+覆盖：身份证（含校验位）、银行卡（Luhn）、手机号（需上下文词）、邮箱、
+微信号 / QQ 号、API Key。掩码保留首尾（`138****5678`），
+让用户仍能认出「对，是这个号」。
+
+* 新写入的记忆自动脱敏，可用 `ENABLE_SAFETY_FILTER=false` 关掉
+* 修复之前写入的数据用 `POST /api/v1/memory/scrub`，
+  它**会同步重建向量** —— 只改 SQL 的话检索命中的仍是旧内容
+* `/stats` 的 `sensitive` 字段如实报告还有多少条待清洗
+
+> 脱敏（掩码，防止被原文记住）与加密（Fernet，防止落盘泄露）解决的是两件事，
+> 不能互相替代。
 
 ## 多媒体
 

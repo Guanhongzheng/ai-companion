@@ -17,6 +17,7 @@ from app.schemas.memory import (
     MemorySearchHit,
     MemoryStats,
     MemoryUpdate,
+    ScrubOut,
 )
 from app.services import memory_service
 
@@ -134,3 +135,13 @@ def export_memories(db: DbSession) -> PlainTextResponse:
 def clear_memories(db: DbSession) -> dict[str, int]:
     deleted = memory_service.clear_all(db)
     return {"deleted": deleted}
+
+
+@router.post("/scrub", response_model=ScrubOut, summary="清洗记忆里的敏感信息")
+async def scrub_memories(db: DbSession) -> ScrubOut:
+    """把已入库记忆中的手机号、身份证等换成掩码，并同步重建向量。
+
+    这是给「修复抽取漏洞之前已经写入的数据」用的补丁。
+    只改 SQL 不够 —— 向量库不跟着改，检索命中的还是旧内容。
+    """
+    return ScrubOut(**await memory_service.scrub_sensitive(db))  # type: ignore[arg-type]

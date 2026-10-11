@@ -35,7 +35,7 @@ from app.schemas.chat import (
     StreamToken,
 )
 from app.services import intent as intent_mod
-from app.services import media_service, session_service, vision_service
+from app.services import media_service, memory_service, session_service, vision_service
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +320,12 @@ async def stream_chat_events(
         yield "done", StreamDone(finish_reason="skipped")
         return
 
+    # 2.5) 抽取长期记忆。放在这里而不是生成之前，是**故意的**：
+    # 本轮回复不该用刚抽出来的记忆（那等于让 AI 自问自答地引用自己的笔记），
+    # 而且抽取可能是一次 LLM 请求，压在 SSE 流前面会拖慢首字响应。
+    # 所以丢后台，下一轮的 memory 事件里就能用上。
+    memory_service.schedule_auto_ingest(latest_user, session.id)
+
     # 3) 情绪分析先发，前端可以立刻切主题，比等文字更快
     result = emotion_mod.PROVIDER(latest_user)
     yield "emotion", StreamEmotion(tag=result.tag, confidence=result.confidence)
@@ -408,6 +414,8 @@ async def complete_chat(
         )
 
     result = emotion_mod.PROVIDER(latest)
+    # 与流式路径同一个位置：抽取丢后台，不拖慢本轮回复
+    memory_service.schedule_auto_ingest(latest, session.id)
     memories = await _recall_memories(db, latest)
     history = session_service.to_model_messages(db, session)
     attachment_note = await _describe_attachments(attachments, override)

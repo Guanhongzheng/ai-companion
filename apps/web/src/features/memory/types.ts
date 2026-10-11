@@ -64,6 +64,18 @@ export interface MemoryStats {
   encrypted: boolean;
   vector_store: string;
   embedder: string;
+  /** 仍含敏感信息、需要清洗的记忆条数 */
+  sensitive: number;
+  /** 脱敏总开关是否打开 */
+  safety_filter: boolean;
+}
+
+/** 隐私清洗结果 */
+export interface ScrubResult {
+  scanned: number;
+  cleaned: number;
+  kinds: string[];
+  ids: string[];
 }
 
 /** 对话时召回的记忆（SSE memory 事件） */

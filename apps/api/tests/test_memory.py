@@ -8,6 +8,7 @@ from app.core import crypto
 from app.memory.embedding import cosine_similarity, get_embedder
 from app.memory.extractor import extract_by_rules
 from app.memory.retriever import lexical_overlap
+from app.services.memory_service import worth_extracting
 
 # ---------------------------------------------------------------- 抽取
 
@@ -236,3 +237,142 @@ def test_crypto_with_key(monkeypatch: object) -> None:
         assert crypto.decrypt(token) == "我的秘密"
     finally:
         crypto.reset()
+
+# ---------------------------------------------------------------- 隐私清洗
+
+#: 校验位合法的号码，编的号过不了校验会被当普通数字放过
+_ID_OK = "310101199003077755"
+_PHONE = "13812345678"
+
+
+def _create_memory(client: TestClient, content: str, type_: str = "fact") -> str:
+    resp = client.post("/api/v1/memory", json={"content": content, "type": type_})
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def test_stats_reports_sensitive_count(client: TestClient) -> None:
+    """有含敏感信息的记忆时，/stats 必须如实报出来，不能默认「一切安全」。"""
+    _create_memory(client, f"用户的手机号是{_PHONE}")
+    stats = client.get("/api/v1/memory/stats").json()
+    assert stats["sensitive"] >= 1
+    assert stats["safety_filter"] is True
+
+
+def test_scrub_cleans_sensitive_memory(client: TestClient) -> None:
+    mid = _create_memory(client, f"用户的身份证号是{_ID_OK}")
+
+    before = client.get("/api/v1/memory/stats").json()
+    assert before["sensitive"] >= 1
+
+    resp = client.post("/api/v1/memory/scrub")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cleaned"] >= 1
+    assert "id_card" in body["kinds"]
+    assert mid in body["ids"]
+
+    # 库里不能再有原文
+    after = client.get("/api/v1/memory/stats").json()
+    assert after["sensitive"] == 0
+    content = next(m["content"] for m in client.get("/api/v1/memory").json() if m["id"] == mid)
+    assert _ID_OK not in content
+    assert "****" in content
+
+
+def test_scrub_is_idempotent(client: TestClient) -> None:
+    """清洗接口可能被反复点，不能把内容洗坏。"""
+    _create_memory(client, f"用户的手机号是{_PHONE}")
+    assert client.post("/api/v1/memory/scrub").json()["cleaned"] >= 1
+    second = client.post("/api/v1/memory/scrub").json()
+    assert second["cleaned"] == 0
+    assert second["scanned"] == 0
+
+
+def test_scrub_rebuilds_vector(client: TestClient) -> None:
+    """🔴 改了正文却不同步向量库，检索命中的仍然是旧内容。
+
+    这条用例守的就是「SQL 与向量库必须一致」这条老教训
+    （和 sync_vector_store 双向对账同一个道理）。
+    """
+    mid = _create_memory(client, f"用户的手机号是{_PHONE}")
+    client.post("/api/v1/memory/scrub")
+
+    hits = client.get("/api/v1/memory/search", params={"q": _PHONE}).json()
+    matched = [h for h in hits if h["memory"]["id"] == mid]
+    for hit in matched:
+        assert _PHONE not in hit["memory"]["content"]
+
+
+def test_extract_redacts_before_persist(client: TestClient, session_id: str) -> None:
+    """端到端：对话里说出手机号，落库的记忆里不该有原文。"""
+    client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": session_id,
+            "messages": [
+                {"role": "user", "content": f"我叫林小满，我的手机号是{_PHONE}"}
+            ],
+        },
+    )
+    for m in client.get("/api/v1/memory").json():
+        assert _PHONE not in m["content"], f"记忆里漏出了手机号：{m['content']}"
+
+
+# ---------------------------------------------------------------- 自动抽取
+
+
+def test_extract_keeps_multiple_same_type_facts() -> None:
+    """🔴 曾经同类型只留权重最高的一条，结果职业被宠物顶掉了。
+
+    两句都是 profile，但它们是两条独立的事实，谁也顶不掉谁。
+    """
+    text = "我是一名海洋生物学家，常年在厦门研究中华白海豚。我养了三只水母，都叫小透明"
+    got = extract_by_rules(text)
+    contents = " ".join(c.content for c in got)
+    assert "海洋生物学家" in contents, f"职业信息丢了：{contents}"
+    assert "水母" in contents, f"宠物信息丢了：{contents}"
+
+
+def test_worth_extracting_gate() -> None:
+    """前置门槛：寒暄不值得花一次模型调用去抽取。"""
+    assert worth_extracting("我是一名海洋生物学家") is True
+    assert worth_extracting("嗯") is False
+    assert worth_extracting("好的") is False
+    assert worth_extracting("在吗") is False
+    assert worth_extracting("") is False
+
+
+def test_chat_actually_ingests_memories(client: TestClient, session_id: str) -> None:
+    """🔴 端到端闭环：说完话，记忆要真的多出来。
+
+    这条曾经是个假象 —— 对话链路压根没调用抽取器，全靠种子数据撑着，
+    演示时「AI 能记住我说过的话」看着成立，实际上换个话题就露馅。
+    """
+    before = client.get("/api/v1/memory/stats").json()["total"]
+
+    client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": session_id,
+            "messages": [
+                {"role": "user", "content": "我是一名海洋生物学家，常年在厦门研究中华白海豚"}
+            ],
+        },
+    )
+
+    after = client.get("/api/v1/memory/stats").json()["total"]
+    assert after > before, "对话后记忆条数应该增加"
+
+    bodies = " ".join(m["content"] for m in client.get("/api/v1/memory").json())
+    assert "海洋生物学家" in bodies
+
+
+def test_chat_does_not_ingest_small_talk(client: TestClient, session_id: str) -> None:
+    """寒暄不该产生记忆，更不该每次都去调一次模型。"""
+    before = client.get("/api/v1/memory/stats").json()["total"]
+    client.post(
+        "/api/v1/chat",
+        json={"session_id": session_id, "messages": [{"role": "user", "content": "嗯"}]},
+    )
+    assert client.get("/api/v1/memory/stats").json()["total"] == before

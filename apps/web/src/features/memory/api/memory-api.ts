@@ -3,7 +3,7 @@
  */
 
 import { apiFetch } from "@/lib/api-client";
-import type { MemoryDto, MemorySearchHitDto, MemoryStats } from "../types";
+import type { MemoryDto, MemorySearchHitDto, MemoryStats, ScrubResult } from "../types";
 
 // 走统一封装，才能带上用户自己填的 API Key
 const request = apiFetch;
@@ -38,6 +38,10 @@ export const memoryApi = {
     }),
 
   remove: (id: string) => request<void>(`/api/v1/memory/${id}`, { method: "DELETE" }),
+
+  /** 清洗记忆里的敏感信息（手机号、身份证等），会同步重建向量 */
+  scrub: () =>
+    request<ScrubResult>("/api/v1/memory/scrub", { method: "POST" }),
 
   clear: () => request<{ deleted: number }>("/api/v1/memory", { method: "DELETE" }),
 
