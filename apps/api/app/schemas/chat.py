@@ -13,6 +13,12 @@ class ChatMessageIn(BaseModel):
     content: str
     #: 图片 / 音频附件。带图片时会自动做视觉理解并注入上下文
     attachments: list[dict[str, object]] = Field(default_factory=list)
+    #: 说话人标识，如 ``u_alice``。群聊里必填，否则总结分不清谁说的
+    sender_id: str | None = Field(
+        default=None, max_length=64, description="说话人 ID，形如 u_alice"
+    )
+    #: 说话人显示名，优先于 sender_id 推导出的名字
+    sender_name: str | None = Field(default=None, max_length=32)
 
 
 class ChatRequest(BaseModel):

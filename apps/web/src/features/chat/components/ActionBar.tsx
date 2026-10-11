@@ -9,6 +9,7 @@
 
 import { Languages, MessageSquareQuote, Sparkles, Wand2 } from "lucide-react";
 
+import { GroupSummaryCard } from "@/features/chat/components/GroupSummaryCard";
 import type { AssistantAction } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
 
@@ -76,10 +77,16 @@ export interface MentionBarProps {
   waiting: boolean;
   /** 点击后在输入框插入 @AI */
   onMention: () => void;
+  /** 当前群聊会话 ID，「总结群聊」用它调接口 */
+  sessionId: string;
 }
 
-/** 群聊的 @ 提示栏 */
-export function GroupMentionBar({ waiting, onMention }: MentionBarProps) {
+/** 群聊的 @ 提示栏 + 总结入口 */
+export function GroupMentionBar({
+  waiting,
+  onMention,
+  sessionId,
+}: MentionBarProps) {
   return (
     <div className="flex items-center justify-between gap-2 border-t border-border bg-card/40 px-4 py-2">
       <p
@@ -90,13 +97,16 @@ export function GroupMentionBar({ waiting, onMention }: MentionBarProps) {
       >
         {waiting ? "AI 听到了，需要 @ 它才会回复" : "AI 只在被 @ 时才回复，不会抢话"}
       </p>
-      <button
-        type="button"
-        onClick={onMention}
-        className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-emotion-primary/15 hover:text-foreground"
-      >
-        @ AI
-      </button>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <GroupSummaryCard sessionId={sessionId} />
+        <button
+          type="button"
+          onClick={onMention}
+          className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-emotion-primary/15 hover:text-foreground"
+        >
+          @ AI
+        </button>
+      </div>
     </div>
   );
 }

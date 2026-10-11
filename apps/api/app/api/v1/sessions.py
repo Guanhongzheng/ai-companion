@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session as OrmSession
 
 from app.db.session import get_db
 from app.schemas.session import (
+    GroupSummaryOut,
     MessageOut,
     SessionCreate,
     SessionOut,
@@ -60,3 +61,28 @@ def rename_session(session_id: str, payload: SessionRename, db: DbSession) -> Se
 )
 def delete_session(session_id: str, db: DbSession) -> None:
     session_service.delete_session(db, session_id)
+
+
+@router.post(
+    "/{session_id}/summarize",
+    response_model=GroupSummaryOut,
+    summary="总结群聊",
+)
+async def summarize_session(session_id: str, db: DbSession) -> GroupSummaryOut:
+    """把群聊里的讨论收拢成结构化摘要：议题 / 结论 / 待办 / 参与者。
+
+    仅对群聊会话开放 —— AI 伴侣和好友单聊是两个人的对话，
+    「总结谁说了什么」这个问题不存在。
+
+    模型不可用时**照样返回结果**（规则版），断网、Key 填错都不会让这个功能消失。
+    """
+    from app.services import summary_service
+
+    session = session_service.get_or_404(db, session_id)
+    if session.type != "group":
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="只有群聊会话需要总结")
+
+    summary = await summary_service.summarize(db, session_id)
+    return GroupSummaryOut(**summary.to_dict(), text=summary_service.render_text(summary))

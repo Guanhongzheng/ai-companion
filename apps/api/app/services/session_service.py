@@ -108,6 +108,14 @@ def list_messages(db: OrmSession, session_id: str, limit: int = 200) -> list[Mes
     return list(db.execute(stmt).scalars().all())
 
 
+def _label_of(sender_id: str) -> str:
+    """从 sender_id 推导显示名：``u_alice`` -> ``Alice``。"""
+    raw = (sender_id or "").strip()
+    if not raw or raw == "local-user":
+        return "我"
+    return raw.removeprefix("u_").replace("_", " ")
+
+
 def append_message(
     db: OrmSession,
     session: SessionModel,
@@ -117,17 +125,23 @@ def append_message(
     content_type: str = "text",
     emotion: str | None = None,
     sender_id: str = "local-user",
+    sender_name: str | None = None,
     attachments: list[dict[str, object]] | None = None,
 ) -> MessageModel:
     """追加一条消息并立即提交。
 
     流式场景下刻意每条都提交：即使生成中途失败，用户说的话也不会丢。
+
+    ``sender_name`` 优先于 ``sender_id`` 推导出的名字 —— 群聊里
+    显示「张三」比显示「u_zhangsan」自然得多。
     """
+    label = (sender_name or "").strip() or _label_of(sender_id)
     message = MessageModel(
         id=_new_id(),
         session_id=session.id,
         sender_type=sender_type,
         sender_id=sender_id,
+        sender_label=label,
         content=content,
         content_type=content_type,
         emotion=emotion,
@@ -144,7 +158,15 @@ def append_message(
 def to_model_messages(db: OrmSession, session: SessionModel) -> list[dict[str, str]]:
     """取出最近的对话，转换成 LiteLLM 认识的消息数组。
 
-    直接查库而不是读 relationship —— 流式过程中刚插入的消息可能还没同步进集合。
+    直接查库而不是走 relationship —— 流式过程中刚插入的消息可能还没同步进集合。
+
+    🔴 **群聊必须携带说话人**，否则做不了群聊总结。
+    群里有 6 个人，如果把所有 user 消息都压成同一条 role=user，
+    模型看到的是「一个人连着说了 20 句」—— 它既不知道谁说了什么，
+    也无从总结出「谁主张了什么」。这里按会话类型分流：
+      * AI 伴侣 / 好友单聊 → 只有两个角色，传统 messages 格式即可
+      * 群聊 → 用「发言人：内容」的文本形式带上标签
+        （chat completions 协议不支持多个 user 角色交替出现）
     """
     rows = (
         db.execute(
@@ -156,8 +178,26 @@ def to_model_messages(db: OrmSession, session: SessionModel) -> list[dict[str, s
         .scalars()
         .all()
     )
-    return [
-        {"role": _ROLE_MAP.get(m.sender_type, "user"), "content": m.content}
-        for m in reversed(rows)
-        if m.content and m.content.strip()
-    ]
+    is_group = session.type == "group"
+    out: list[dict[str, str]] = []
+    for m in reversed(rows):
+        if not m.content or not m.content.strip():
+            continue
+        role = _ROLE_MAP.get(m.sender_type, "user")
+        if is_group and role == "user":
+            out.append({"role": "user", "content": f"{speaker_label(m)}：{m.content}"})
+        else:
+            out.append({"role": role, "content": m.content})
+    return out
+
+
+def speaker_label(message: MessageModel) -> str:
+    """这条消息在群聊里该显示成谁、该被总结成谁。
+
+    优先用写入时存下的 ``sender_label``（那是用户给的显示名），
+    旧数据没有这一列时才从 ``sender_id`` 推导。
+    """
+    stored = (message.sender_label or "").strip()
+    if stored:
+        return stored
+    return _label_of(message.sender_id)

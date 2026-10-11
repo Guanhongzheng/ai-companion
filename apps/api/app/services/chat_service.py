@@ -307,6 +307,8 @@ async def stream_chat_events(
             session,
             sender_type=msg.role,
             content=msg.content,
+            sender_id=msg.sender_id or "local-user",
+            sender_name=msg.sender_name,
             attachments=msg.attachments,
         )
         if msg.role == "user":
@@ -411,7 +413,13 @@ async def complete_chat(
 
     for msg in req.messages:
         session_service.append_message(
-            db, session, sender_type=msg.role, content=msg.content, attachments=msg.attachments
+            db,
+            session,
+            sender_type=msg.role,
+            content=msg.content,
+            sender_id=msg.sender_id or "local-user",
+            sender_name=msg.sender_name,
+            attachments=msg.attachments,
         )
 
     latest = req.messages[-1].content if req.messages else ""

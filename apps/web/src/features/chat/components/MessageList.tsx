@@ -8,6 +8,8 @@ import { MessageBubble } from "./MessageBubble";
 export function MessageList() {
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const messages = useChatStore((s) => (activeSessionId ? s.messages[activeSessionId] : undefined));
+  // 群聊里要显示发言人、并让所有人的气泡统一靠左
+  const isGroup = useChatStore((s) => s.sessions.find((x) => x.id === activeSessionId)?.type === "group");
 
   if (!activeSessionId) {
     return (
@@ -33,7 +35,9 @@ export function MessageList() {
       // 流式输出时始终贴底跟随
       followOutput
       increaseViewportBy={240}
-      itemContent={(_index, message) => <MessageBubble message={message} />}
+      itemContent={(_index, message) => (
+        <MessageBubble message={message} isGroup={isGroup} />
+      )}
     />
   );
 }

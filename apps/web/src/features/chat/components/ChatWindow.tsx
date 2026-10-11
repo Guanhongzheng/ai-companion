@@ -182,6 +182,7 @@ export function ChatWindow() {
         <MessageList />
         <ChatComposer
           sessionType={(active?.type ?? "ai") as "ai" | "direct" | "group"}
+          sessionId={activeSessionId}
           action={assistantAction}
           onActionChange={setAssistantAction}
         />

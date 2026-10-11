@@ -31,6 +31,13 @@ export interface Message {
   sessionId: string;
   senderType: SenderType;
   senderId: string;
+  /**
+   * 群聊里这条消息的发言人显示名（如「张三」）。
+   *
+   * 写入时就定好而不是读时从 senderId 推导 —— 否则改了 id 名字就跟着变。
+   * AI 伴侣 / 好友单聊下为空。
+   */
+  senderLabel?: string;
   content: string;
   contentType: ContentType;
   /** 情绪标签，驱动前端主题 / 壁纸 / 音乐联动 */

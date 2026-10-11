@@ -53,6 +53,9 @@ class MessageModel(Base):
     #: user / ai / system
     sender_type: Mapped[str] = mapped_column(String(16), default="user")
     sender_id: Mapped[str] = mapped_column(String(64), default="local-user")
+    #: 群聊里这条消息是谁说的。写入时定好（优先取请求里的显示名），
+    #: 不在读的时候从 sender_id 猜 —— 否则历史数据改了 id 名字就跟着变。
+    sender_label: Mapped[str] = mapped_column(String(64), default="我")
     content: Mapped[str] = mapped_column(Text, default="")
     #: text / image / audio / file
     content_type: Mapped[str] = mapped_column(String(16), default="text")

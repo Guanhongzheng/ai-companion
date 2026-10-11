@@ -3,7 +3,7 @@
  */
 
 import { apiFetch } from "@/lib/api-client";
-import type { MessageDto, SessionDto } from "../types";
+import type { GroupSummary, MessageDto, SessionDto } from "../types";
 
 // 走统一封装，才能带上用户自己填的 API Key
 const request = apiFetch;
@@ -27,6 +27,10 @@ export const chatApi = {
 
   listMessages: (sessionId: string) =>
     request<MessageDto[]>(`/api/v1/sessions/${sessionId}/messages`),
+
+  /** 群聊总结。模型不可用时后端会退回规则版，照样返回结果 */
+  summarize: (sessionId: string) =>
+    request<GroupSummary>(`/api/v1/sessions/${sessionId}/summarize`, { method: "POST" }),
 
   streamUrl: "/api/v1/chat/stream",
 };

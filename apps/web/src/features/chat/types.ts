@@ -25,6 +25,8 @@ export interface MessageDto {
   session_id: string;
   sender_type: string;
   sender_id: string;
+  /** 群聊里的显示名（如「张三」），AI 伴侣会话下为空 */
+  sender_label?: string;
   content: string;
   content_type: string;
   emotion: string | null;
@@ -51,6 +53,7 @@ export function toMessage(dto: MessageDto): Message {
     sessionId: dto.session_id,
     senderType: dto.sender_type as Message["senderType"],
     senderId: dto.sender_id,
+    senderLabel: dto.sender_label || "",
     content: dto.content,
     contentType: dto.content_type as Message["contentType"],
     emotion: (dto.emotion as EmotionTag | null) ?? undefined,
@@ -96,4 +99,15 @@ export interface StreamDonePayload {
 
 export interface StreamErrorPayload {
   message: string;
+}
+/** 群聊摘要 */
+export interface GroupSummary {
+  topic: string;
+  conclusions: string[];
+  todos: string[];
+  participants: { name: string; count: number }[];
+  message_count: number;
+  /** llm / rules —— 前端据此如实告知用的哪种 */
+  source: string;
+  text: string;
 }

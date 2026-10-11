@@ -27,8 +27,42 @@ Base URL：`http://localhost:8000`
 | GET | `/api/v1/sessions` | 会话列表（置顶优先、按最近活跃排序） |
 | POST | `/api/v1/sessions` | 创建会话，body `{ type, title, memberCount? }` |
 | GET | `/api/v1/sessions/{id}/messages` | 消息历史 |
+| POST | `/api/v1/sessions/{id}/summarize` | **群聊总结**：议题 / 结论 / 待办 / 参与者 |
 | PATCH | `/api/v1/sessions/{id}` | 重命名，body `{ title }` |
 | DELETE | `/api/v1/sessions/{id}` | 删除会话（级联删除消息） |
+
+### 群聊总结
+
+把群聊里散落的讨论收拢成结构化摘要。AI 在这里的定位很清楚：
+**不参与讨论，只负责收拢信息** —— 所以它只读、只展示，不会自动往群里发言。
+
+前置条件是**消息要带发言人**：请求里传 `sender_id`（`u_alice`）与可选的
+`sender_name`（「张三」，优先使用）。不传时默认是「我」。
+
+```json
+{ "session_id": "...", "messages": [
+  { "role": "user", "content": "我来出数据部分", "sender_id": "u_zhang", "sender_name": "张三" }
+]}
+```
+
+返回：
+
+```json
+{
+  "topic": "产品评审时间调整及材料准备安排",
+  "conclusions": ["产品评审改到周四", "周三收齐材料"],
+  "todos": ["张三：出数据部分", "李四：跟设计那边对齐"],
+  "participants": [{ "name": "张三", "count": 3 }, { "name": "李四", "count": 2 }],
+  "message_count": 5,
+  "source": "llm",
+  "text": "【…】\n参与者：…\n结论：…"
+}
+```
+
+`source` 如实告知用的是模型（`llm`）还是规则兜底（`rules`）。
+**模型不可用时照样返回结果** —— 断网、Key 填错、余额不足都不会让这个功能消失。
+
+只有群聊会话可以总结，单聊是两个人对话，「总结谁说了什么」这个问题不存在（返回 400）。
 
 首次启动会自动灌入三条示例会话（AI 伴侣 / 好友 / 群聊各一），界面一打开就有内容。
 

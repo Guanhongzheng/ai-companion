@@ -8,12 +8,16 @@ import { absoluteUrl, cn } from "@/lib/utils";
 
 interface Props {
   message: Message;
+  /** 群聊会话：显示发言人标签，且用户气泡靠左（多人轮流的群像） */
+  isGroup?: boolean;
 }
 
-export function MessageBubble({ message }: Props) {
+export function MessageBubble({ message, isGroup = false }: Props) {
   const { transition, variants } = useEmotionMotion();
 
   const isUser = message.senderType === "user";
+  // 群聊里所有人的消息都来自「用户」侧，user 气泡靠右会让人以为是同一个人在自问自答
+  const alignRight = isUser && !isGroup;
   const emotion = message.emotion;
   const emotionTheme = emotion ? emotionThemeOf(emotion) : null;
 
@@ -25,13 +29,17 @@ export function MessageBubble({ message }: Props) {
       transition={transition}
       className={cn(
         "flex w-full gap-2 px-4 py-emotion",
-        isUser ? "justify-end" : "justify-start",
+        alignRight ? "justify-end" : "justify-start",
       )}
     >
-      <div
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {isGroup && isUser && message.senderLabel && (
+          <span className="px-1 text-[10px] text-muted-foreground">{message.senderLabel}</span>
+        )}
+        <div
         className={cn(
           "max-w-[var(--emotion-bubble-width)] rounded-emotion px-3.5 py-2 leading-relaxed",
-          isUser
+          alignRight
             ? "rounded-br-sm bg-emotion-primary text-white"
             : "rounded-bl-sm bg-muted text-foreground",
           // 愤怒时气泡更硬朗，平静疲惫时更圆润柔和
@@ -82,6 +90,7 @@ export function MessageBubble({ message }: Props) {
             {emotionTheme.label}
           </p>
         )}
+        </div>
       </div>
     </motion.div>
   );

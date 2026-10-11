@@ -28,6 +28,8 @@ class MessageOut(BaseModel):
     session_id: str
     sender_type: str
     sender_id: str
+    #: 群聊里的显示名（如「张三」），AI 伴侣会话下为空
+    sender_label: str = ""
     content: str
     content_type: str = "text"
     emotion: str | None = None
@@ -59,3 +61,19 @@ class SessionCreate(BaseModel):
 
 class SessionRename(BaseModel):
     title: str
+
+
+class GroupSummaryOut(BaseModel):
+    """群聊摘要。"""
+
+    topic: str = ""
+    conclusions: list[str] = []
+    todos: list[str] = []
+    #: 参与者及其发言量，按发言数降序
+    participants: list[dict[str, Any]] = []
+    #: 覆盖了多少条人类发言
+    message_count: int = 0
+    #: llm / rules —— 前端据此如实告知用的是哪种
+    source: str = "rules"
+    #: 纯文本形式，便于直接展示或复制
+    text: str = ""

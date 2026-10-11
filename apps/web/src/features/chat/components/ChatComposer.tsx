@@ -13,12 +13,19 @@ import { AssistantActionBar, GroupMentionBar } from "./ActionBar";
 interface Props {
   /** 当前会话类型，决定输入框上方的辅助区 */
   sessionType: "ai" | "direct" | "group";
+  /** 当前会话 ID，「总结群聊」用它调接口 */
+  sessionId: string | null;
   /** 选中的辅助动作 */
   action: AssistantAction | null;
   onActionChange: (action: AssistantAction | null) => void;
 }
 
-export function ChatComposer({ sessionType, action, onActionChange }: Props) {
+export function ChatComposer({
+  sessionType,
+  sessionId,
+  action,
+  onActionChange,
+}: Props) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const sending = useChatStore((s) => s.sending);
@@ -49,6 +56,7 @@ export function ChatComposer({ sessionType, action, onActionChange }: Props) {
       )}
       {sessionType === "group" && (
         <GroupMentionBar
+          sessionId={sessionId ?? ""}
           waiting={waitingForMention}
           onMention={() => setText((t) => (t.startsWith("@AI") ? t : `@AI ${t}`.trimEnd()))}
         />
