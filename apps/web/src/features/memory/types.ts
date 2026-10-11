@@ -86,6 +86,13 @@ export interface RecalledMemory {
   reranker: string;
 }
 
+/** 本轮新记住的记忆（SSE learned 事件） */
+export interface LearnedMemory {
+  id: string;
+  content: string;
+  type: string;
+}
+
 export function toMemory(dto: MemoryDto): Memory {
   return {
     id: dto.id,

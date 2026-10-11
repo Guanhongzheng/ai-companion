@@ -74,5 +74,19 @@ class StreamMemory(BaseModel):
     items: list[dict[str, object]] = []
 
 
+class StreamLearned(BaseModel):
+    """本轮新记住的记忆。
+
+    与 ``StreamMemory`` 是**相反**的两件事：一个是「想起」，一个是「记住」。
+    没有这个事件的话，AI 在后台学会了东西用户完全看不到，
+    抽取失败也一样静悄悄 —— 那正是「静默失效」。
+    """
+
+    #: 本轮新增的记忆（已脱敏，可直接展示）
+    items: list[dict[str, object]] = []
+    #: 有没有被触发抽取。False 表示这句话不值得记（如寒暄），不是故障
+    attempted: bool = False
+
+
 class StreamError(BaseModel):
     message: str

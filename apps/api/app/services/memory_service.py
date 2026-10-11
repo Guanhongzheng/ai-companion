@@ -403,6 +403,9 @@ def _schedule_index(rows: list[MemoryModel], plains: list[str]) -> None:
 #: 短于这个长度的消息不可能是「值得长期记住的事实」，直接跳过抽取
 _MIN_INGEST_CHARS = 6
 
+#: 等后台抽取出结果的最长秒数。抽不出来就当没记住，绝不让界面干等
+_LEARN_WAIT_SECONDS = 4.0
+
 
 def worth_extracting(text: str) -> bool:
     """零成本的前置门槛，决定这条消息值不值得跑一遍抽取。
@@ -415,7 +418,9 @@ def worth_extracting(text: str) -> bool:
     return len(stripped) >= _MIN_INGEST_CHARS and "我" in stripped
 
 
-def schedule_auto_ingest(text: str, session_id: str | None = None) -> bool:
+def schedule_auto_ingest(
+    text: str, session_id: str | None = None
+) -> asyncio.Task[list[str]] | None:
     """把一轮对话丢进后台抽取。非阻塞，失败不影响本轮回复。
 
     为什么必须是后台任务：
@@ -424,30 +429,64 @@ def schedule_auto_ingest(text: str, session_id: str | None = None) -> bool:
 
     任务内部自己开 session —— 调用方（SSE 处理器）的 session 由请求生命周期管理，
     等后台任务跑起来时它可能已经关闭了。
+
+    返回任务句柄：抽取是异步的，调用方可以 await 它拿到结果，
+    也允许完全不理会（None 表示压根没触发抽取）。
     """
     if not settings.memory_auto_ingest or not worth_extracting(text):
-        return False
+        return None
 
     payload = text.strip()
 
-    async def _run() -> None:
+    async def _run() -> list[str]:
         from app.db.session import SessionLocal
 
         with SessionLocal() as s:
             saved = await ingest_text(s, payload, session_id)
         if saved:
             logger.info("本轮自动记住了 %d 条：%s", len(saved), payload[:30])
+        return saved
 
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         # 同步场景（测试、脚本）直接跑完，行为可预期
-        asyncio.run(_run())
-        return True
+        return None
 
     task = loop.create_task(_run())
     task.add_done_callback(_log_task_failure("记忆自动抽取"))
-    return True
+    return task
+
+
+async def wait_for_learning(task: asyncio.Task[list[str]] | None) -> list[MemoryModel]:
+    """等后台抽取跑完，把新记住的记忆取出来。
+
+    抽不出来、失败、超时都返回空列表 —— 这里**不抛异常**：
+    记不住一件事不该让聊天界面出错。
+
+    超时是为了防一种情况：LLM 抽取出不回来时，用户已经看到回复了，
+    不该让界面一直转圈等一个可能永远不来的结果。
+    """
+    if task is None:
+        return []
+
+    try:
+        ids = await asyncio.wait_for(asyncio.shield(task), timeout=_LEARN_WAIT_SECONDS)
+    except (TimeoutError, asyncio.CancelledError):
+        logger.debug("等待记忆抽取超时，本轮不展示「新记住」")
+        return []
+    except Exception as exc:
+        logger.warning("记忆抽取失败：%s", exc)
+        return []
+
+    if not ids:
+        return []
+
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as s:
+        rows = s.execute(select(MemoryModel).where(MemoryModel.id.in_(ids))).scalars().all()
+    return list(rows)
 
 
 def stats(db: OrmSession) -> dict[str, object]:

@@ -23,6 +23,7 @@ export function ChatWindow() {
   const model = useChatStore((s) => s.model);
   const mocked = useChatStore((s) => s.mocked);
   const recalledMemories = useChatStore((s) => s.recalledMemories);
+  const learnedMemories = useChatStore((s) => s.learnedMemories);
   const waitingForMention = useChatStore((s) => s.waitingForMention);
   const error = useChatStore((s) => s.error);
   const clearError = useChatStore((s) => s.clearError);
@@ -143,6 +144,26 @@ export function ChatWindow() {
               >
                 {m.content}
                 <span className="ml-1 opacity-50">{(m.score * 100).toFixed(0)}%</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* 「记住了」是后台抽取的结果，做不到实时推送，
+            所以它必然比正文晚一点出现 —— 但必须看得见，
+            否则 AI 学到了东西用户毫无感知，抽取失败也一样静悄悄。 */}
+        {learnedMemories.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-emotion-secondary/5 px-4 py-2 text-[11px]">
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <Brain className="h-3 w-3" />
+              我记住了：
+            </span>
+            {learnedMemories.map((m) => (
+              <span
+                key={m.id}
+                className="rounded-full bg-background px-2 py-0.5 ring-1 ring-border"
+              >
+                {m.content}
               </span>
             ))}
           </div>

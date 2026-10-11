@@ -15,7 +15,7 @@ import { absoluteUrl } from "@/lib/utils";
 import { readByokHeaders } from "@/lib/api-client";
 import { streamPost } from "@/lib/sse-client";
 import { chatApi } from "@/features/chat/api/chat-api";
-import type { RecalledMemory } from "@/features/memory/types";
+import type { LearnedMemory, RecalledMemory } from "@/features/memory/types";
 import {
   toMessage,
   toSession,
@@ -47,6 +47,8 @@ interface ChatState {
   mocked: boolean;
   /** 本轮召回的长期记忆，用来在界面上展示「AI 想起了什么」 */
   recalledMemories: RecalledMemory[];
+  /** 本轮新记住的记忆，展示「AI 记住了：xxx」 */
+  learnedMemories: LearnedMemory[];
   /** 本轮意图判定结果 */
   lastAction: StreamActionPayload["action"];
   /** 群聊里 AI 是否在等你 @ 它 */
@@ -76,6 +78,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   model: null,
   mocked: false,
   recalledMemories: [],
+  learnedMemories: [],
   lastAction: "chat",
   waitingForMention: false,
   error: null,
@@ -170,6 +173,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       sending: true,
       error: null,
       recalledMemories: [],
+      learnedMemories: [],
       lastAction: action ?? "chat",
       waitingForMention: false,
       messages: {
@@ -230,6 +234,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
               case "memory": {
                 const payload = raw as { items: RecalledMemory[] };
                 set({ recalledMemories: payload.items ?? [] });
+                break;
+              }
+              case "learned": {
+                // 「记住了」与「想起了」是两件事：前者是后台抽取的结果
+                const payload = raw as { items: LearnedMemory[]; attempted: boolean };
+                set({ learnedMemories: payload.items ?? [] });
                 break;
               }
               case "token":

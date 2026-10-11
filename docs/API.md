@@ -77,6 +77,8 @@ Embedding Key 即可，**上层代码一行都不用改**。
 * 有前置门槛：消息太短（< 6 字）或不含「我」直接跳过。
   没有这道门槛的话，等于每说一句话就调一次模型
 * 抽取内容在入库前**必定经过脱敏**（见下）
+* 结果通过 `learned` 事件回传（`done` 之前，最多等 4 秒）。
+  没有这个事件的话，AI 悄悄学会了东西用户完全看不到，抽取失败也一样静悄悄
 
 ### 敏感信息脱敏
 
@@ -203,6 +205,7 @@ Key 无效、模型不存在、余额不足、超时等异常会被翻译成中�
 | `meta` | `{ "session_id", "model", "mocked" }` | 会话元信息。`mocked=true` 表示未配置 Key、走本地降级 |
 | `action` | `{ "action": "polish", "waiting_for_mention": false }` | 本轮意图判定。群聊未被 @ 时 `action=skipped` 且不产生任何 token |
 | `emotion` | `{ "tag": "tired", "confidence": 0.65 }` | 情绪标签，前端据此切换主题 |
+| `learned` | `{ "items": [{ "id", "content", "type" }], "attempted": true }` | **本轮新记住的记忆**，在 `done` 之前发出 |
 | `memory` | `{ "items": [{ "id", "content", "score", "reranker" }] }` | 本轮召回的长期记忆，前端展示「AI 想起了什么」 |
 | `token` | `{ "text": "辛苦" }` | 增量文本，中文按 1-2 字切块推送 |
 | `done` | `{ "finish_reason": "stop" }` | 流结束 |

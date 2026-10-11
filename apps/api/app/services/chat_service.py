@@ -19,6 +19,7 @@ from collections.abc import AsyncIterator
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as OrmSession
 
+from app.core import crypto
 from app.core import emotion as emotion_mod
 from app.core.config import settings
 from app.core.errors import friendly_model_error
@@ -30,6 +31,7 @@ from app.schemas.chat import (
     StreamDone,
     StreamEmotion,
     StreamError,
+    StreamLearned,
     StreamMemory,
     StreamMeta,
     StreamToken,
@@ -324,7 +326,7 @@ async def stream_chat_events(
     # 本轮回复不该用刚抽出来的记忆（那等于让 AI 自问自答地引用自己的笔记），
     # 而且抽取可能是一次 LLM 请求，压在 SSE 流前面会拖慢首字响应。
     # 所以丢后台，下一轮的 memory 事件里就能用上。
-    memory_service.schedule_auto_ingest(latest_user, session.id)
+    ingest_task = memory_service.schedule_auto_ingest(latest_user, session.id)
 
     # 3) 情绪分析先发，前端可以立刻切主题，比等文字更快
     result = emotion_mod.PROVIDER(latest_user)
@@ -360,6 +362,19 @@ async def stream_chat_events(
     session_service.append_message(
         db, session, sender_type="ai", content=reply, emotion=result.tag
     )
+
+    # 5) 告诉用户「我刚记住了什么」。放在 done 之前，且最多等几秒。
+    #    后台抽取失败时这里拿不到东西 —— 静默也就成了默认状态，
+    #    所以宁可晚几秒发出，也要把「记住了」这件事变得可见。
+    learned = await memory_service.wait_for_learning(ingest_task)
+    if learned:
+        yield "learned", StreamLearned(
+            attempted=True,
+            items=[
+                {"id": m.id, "content": crypto.decrypt(m.content), "type": m.type}
+                for m in learned
+            ],
+        )
 
     yield "done", StreamDone(finish_reason="stop")
 

@@ -251,7 +251,7 @@ def _create_memory(client: TestClient, content: str, type_: str = "fact") -> str
     return resp.json()["id"]
 
 
-def test_stats_reports_sensitive_count(client: TestClient) -> None:
+def test_stats_reports_sensitive_count(client: TestClient, clean_memory_db: None) -> None:
     """有含敏感信息的记忆时，/stats 必须如实报出来，不能默认「一切安全」。"""
     _create_memory(client, f"用户的手机号是{_PHONE}")
     stats = client.get("/api/v1/memory/stats").json()
@@ -259,7 +259,7 @@ def test_stats_reports_sensitive_count(client: TestClient) -> None:
     assert stats["safety_filter"] is True
 
 
-def test_scrub_cleans_sensitive_memory(client: TestClient) -> None:
+def test_scrub_cleans_sensitive_memory(client: TestClient, clean_memory_db: None) -> None:
     mid = _create_memory(client, f"用户的身份证号是{_ID_OK}")
 
     before = client.get("/api/v1/memory/stats").json()
@@ -280,7 +280,7 @@ def test_scrub_cleans_sensitive_memory(client: TestClient) -> None:
     assert "****" in content
 
 
-def test_scrub_is_idempotent(client: TestClient) -> None:
+def test_scrub_is_idempotent(client: TestClient, clean_memory_db: None) -> None:
     """清洗接口可能被反复点，不能把内容洗坏。"""
     _create_memory(client, f"用户的手机号是{_PHONE}")
     assert client.post("/api/v1/memory/scrub").json()["cleaned"] >= 1
@@ -289,7 +289,7 @@ def test_scrub_is_idempotent(client: TestClient) -> None:
     assert second["scanned"] == 0
 
 
-def test_scrub_rebuilds_vector(client: TestClient) -> None:
+def test_scrub_rebuilds_vector(client: TestClient, clean_memory_db: None) -> None:
     """🔴 改了正文却不同步向量库，检索命中的仍然是旧内容。
 
     这条用例守的就是「SQL 与向量库必须一致」这条老教训
@@ -304,7 +304,7 @@ def test_scrub_rebuilds_vector(client: TestClient) -> None:
         assert _PHONE not in hit["memory"]["content"]
 
 
-def test_extract_redacts_before_persist(client: TestClient, session_id: str) -> None:
+def test_extract_redacts_before_persist(client: TestClient, session_id: str, clean_memory_db: None) -> None:
     """端到端：对话里说出手机号，落库的记忆里不该有原文。"""
     client.post(
         "/api/v1/chat",
@@ -343,7 +343,7 @@ def test_worth_extracting_gate() -> None:
     assert worth_extracting("") is False
 
 
-def test_chat_actually_ingests_memories(client: TestClient, session_id: str) -> None:
+def test_chat_actually_ingests_memories(client: TestClient, session_id: str, clean_memory_db: None) -> None:
     """🔴 端到端闭环：说完话，记忆要真的多出来。
 
     这条曾经是个假象 —— 对话链路压根没调用抽取器，全靠种子数据撑着，
@@ -368,7 +368,7 @@ def test_chat_actually_ingests_memories(client: TestClient, session_id: str) -> 
     assert "海洋生物学家" in bodies
 
 
-def test_chat_does_not_ingest_small_talk(client: TestClient, session_id: str) -> None:
+def test_chat_does_not_ingest_small_talk(client: TestClient, session_id: str, clean_memory_db: None) -> None:
     """寒暄不该产生记忆，更不该每次都去调一次模型。"""
     before = client.get("/api/v1/memory/stats").json()["total"]
     client.post(

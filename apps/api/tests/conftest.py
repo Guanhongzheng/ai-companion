@@ -82,3 +82,21 @@ def direct_session_id(client: TestClient) -> str:
     """好友单聊会话的 ID，用于测试辅助动作。"""
     sessions = client.get("/api/v1/sessions").json()
     return next(s["id"] for s in sessions if s["type"] == "direct")
+
+@pytest.fixture
+def clean_memory_db(client: TestClient) -> Iterator[None]:
+    """跑完把测试期间**新增**的记忆清掉，只清新增、不碰种子。
+
+    🔴 为什么必须有这个 fixture：整个套件共享**一个 session 级数据库**，
+    而 ``/memory/stats`` 那类老用例断言的是**绝对值**（种子恰好 5 条）。
+    只要任何新增用例往库里写一条记忆，后面这些断言绝对值的用例就全挂 ——
+    测试之间互相污染，失败信息还会误导人以为产品代码坏了。
+
+    必须在用例**开始前**记下快照，只删快照里没有的那些，
+    否则连种子一起删掉，后续用例就再也等不到种子数据了。
+    """
+    before = {row["id"] for row in client.get("/api/v1/memory").json()}
+    yield
+    for row in client.get("/api/v1/memory").json():
+        if row["id"] not in before:
+            client.delete(f"/api/v1/memory/{row['id']}")
