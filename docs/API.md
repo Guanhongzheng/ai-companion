@@ -75,6 +75,9 @@ Embedding Key 即可，**上层代码一行都不用改**。
 | POST | `/api/v1/media/audio` | 上传音频 |
 | POST | `/api/v1/media/transcribe` | 音频转文字，服务端 ASR 兜底 |
 | POST | `/api/v1/media/vision` | 单独调一次图片理解 |
+| GET | `/api/v1/media/stats` | 上传目录占用：文件数、引用数、可清理量与字节数 |
+| POST | `/api/v1/media/cleanup` | 清理**没有任何消息引用**的上传文件（可选 `grace_hours`） |
+| DELETE | `/api/v1/media/{filename}` | 删除单个上传文件，已被消息引用时返回 409 |
 | GET | `/api/v1/media/{filename}` | 读取已上传的文件 |
 
 支持类型：图片 png / jpeg / webp / gif；音频 webm / ogg / mp3 / m4a / wav
@@ -84,8 +87,37 @@ Embedding Key 即可，**上层代码一行都不用改**。
 
 * 落盘文件名完全由服务端用 uuid 生成，**不采用用户提交的原始文件名**
 * 磁盘扩展名由**类型白名单**推导 —— 把脚本伪装成 `image/png` 上传，存下来仍是 `.png`
-* 读取接口做目录穿越校验，`..` 一律 404
+* 读取与删除接口都做目录穿越校验，`..` 一律 404
 * 图片大小上限 `MAX_IMAGE_MB`（默认 10MB），音频 `MAX_AUDIO_MB`（默认 25MB）
+
+### 上传文件的清理
+
+上传是「先落盘、再随消息发送」的两步流程，中间必然留下两类孤儿文件：传了没发出去的
+（移除附件、切会话、直接关页面），和发过但消息随会话被删掉的。没人回收的话
+`apps/api/data/uploads/` 会只涨不落。
+
+回收有三道，都不是靠猜：
+
+| 触发 | 行为 |
+| --- | --- |
+| 删除会话 | 顺带删掉该会话消息引用的文件（会话没了，附件也没有入口了） |
+| 发送前移除附件 | 前端立即尽力删除该文件；删不掉也无妨 |
+| 启动自动清理 | 扫描 `messages.attachments` 算出仍在引用的集合，回收其余文件 |
+
+**宽限期**是这套机制的关键：用户刚上传、图还放在输入框里时，那份文件同样是「未被引用」
+的状态，没有宽限期就会被误删。
+
+* 启动自动清理：`MEDIA_CLEANUP_GRACE_HOURS`（默认 24 小时），可用 `MEDIA_AUTO_CLEANUP=false` 关闭
+* 手动清理接口：`grace_hours` 默认 1 小时
+
+`POST /api/v1/media/cleanup` 的返回分开记账，便于判断是「没得清」还是「被保护了」：
+
+```json
+{
+  "scanned": 12, "deleted": 3, "freed_bytes": 184320,
+  "kept_referenced": 8, "kept_recent": 1, "failed": 0
+}
+```
 
 聊天时消息里带 `attachments` 字段即可携带图片或语音：图片会自动做视觉理解、
 语音会用 `transcript` 一起注入上下文。**没配视觉 / ASR 能力时不会报错**，

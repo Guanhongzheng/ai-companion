@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   CheckCircle2,
+  Eraser,
   Eye,
   EyeOff,
   Loader2,
@@ -10,17 +11,27 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { MODEL_PROVIDERS } from "@ai-companion/shared";
+import { mediaApi, type MediaStats } from "@/features/multimodal/api/media-api";
 import { cn } from "@/lib/utils";
 import { settingsApi, type StatusResult } from "../api/settings-api";
 import { currentProvider, useSettingsStore } from "../store/settings-store";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 export function SettingsPanel() {
   const s = useSettingsStore();
   const [revealKey, setRevealKey] = useState(false);
   const [status, setStatus] = useState<StatusResult | null>(null);
+  const [mediaStats, setMediaStats] = useState<MediaStats | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanMessage, setCleanMessage] = useState<string | null>(null);
 
   const provider = currentProvider(s);
   const needsKey = provider.id !== "ollama";
@@ -31,6 +42,35 @@ export function SettingsPanel() {
       .then(setStatus)
       .catch(() => setStatus(null));
   }, []);
+
+  const refreshMediaStats = useCallback(() => {
+    void mediaApi
+      .stats()
+      .then(setMediaStats)
+      .catch(() => setMediaStats(null));
+  }, []);
+
+  useEffect(() => refreshMediaStats(), [refreshMediaStats]);
+
+  const handleCleanup = async () => {
+    setCleaning(true);
+    setCleanMessage(null);
+    try {
+      const result = await mediaApi.cleanup();
+      setCleanMessage(
+        result.deleted > 0
+          ? `已清理 ${result.deleted} 个文件，释放 ${formatBytes(result.freed_bytes)}`
+          : result.kept_recent > 0
+            ? "没有可清理的文件（刚上传的附件在 1 小时保护期内）"
+            : "没有可清理的文件",
+      );
+      refreshMediaStats();
+    } catch (error) {
+      setCleanMessage(error instanceof Error ? error.message : "清理失败");
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   const handleValidate = async () => {
     s.setValidating(true, false, null);
@@ -258,6 +298,65 @@ export function SettingsPanel() {
           </dl>
         </Section>
       )}
+
+      {/* ---- 上传文件缓存 ---- */}
+      <Section
+        title="上传文件缓存"
+        action={
+          mediaStats && (
+            <span className="text-[11px] text-muted-foreground">
+              {mediaStats.file_count} 个文件 · {formatBytes(mediaStats.total_bytes)}
+            </span>
+          )
+        }
+      >
+        <div className="flex flex-col gap-2.5">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            语音和图片是「先落盘再随消息发送」的。传了却没发出去的那些（移除附件、切走会话、
+            直接关页面）不会自己消失，会一直占着磁盘。后端启动时会自动回收，这里也可以手动清。
+          </p>
+
+          {mediaStats && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+              <dt className="text-muted-foreground">消息在用</dt>
+              <dd>
+                {mediaStats.referenced_count} 个 ·{" "}
+                {formatBytes(mediaStats.total_bytes - mediaStats.orphan_bytes)}
+              </dd>
+              <dt className="text-muted-foreground">可清理</dt>
+              <dd className={cn(mediaStats.orphan_count > 0 && "text-emotion-primary")}>
+                {mediaStats.orphan_count} 个 · {formatBytes(mediaStats.orphan_bytes)}
+              </dd>
+              <dt className="text-muted-foreground">目录</dt>
+              <dd className="truncate font-mono text-[11px]" title={mediaStats.directory}>
+                {mediaStats.directory}
+              </dd>
+            </dl>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCleanup()}
+              disabled={cleaning}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs transition-colors",
+                cleaning ? "cursor-not-allowed opacity-50" : "hover:bg-muted",
+              )}
+            >
+              {cleaning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Eraser className="h-3.5 w-3.5" />
+              )}
+              清理无用文件
+            </button>
+            {cleanMessage && (
+              <span className="text-xs text-muted-foreground">{cleanMessage}</span>
+            )}
+          </div>
+        </div>
+      </Section>
 
       <Section title="数据管理">
         <div className="flex flex-wrap items-center gap-2">

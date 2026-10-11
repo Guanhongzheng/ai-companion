@@ -181,3 +181,134 @@ def test_transcribe_without_asr_degrades(client: TestClient) -> None:
     body = resp.json()
     assert body["available"] is False
     assert "未配置" in (body["hint"] or "")
+
+
+# ---------------------------------------------------------------- 清理
+#
+# 这些用例放在文件末尾：``cleanup(grace_hours=0)`` 会清掉所有未被引用的文件，
+# 跑在前面会把其它用例刚上传的素材一起清掉。
+
+
+def _filename(url: str) -> str:
+    return url.rstrip("/").rsplit("/", 1)[-1]
+
+
+def _upload_image(client: TestClient) -> str:
+    return _upload(client, "/api/v1/media/image", PNG, "image/png").json()["url"]
+
+
+def _attach_to(client: TestClient, session_id: str, url: str) -> None:
+    """把附件真的挂到一条落库的消息上，让它变成「被引用」。"""
+    resp = client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": session_id,
+            "messages": [
+                {"role": "user", "content": "看这张图", "attachments": [{"kind": "image", "url": url}]}
+            ],
+        },
+    )
+    assert resp.status_code == 200
+
+
+def test_media_stats_shape(client: TestClient) -> None:
+    resp = client.get("/api/v1/media/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {
+        "file_count",
+        "total_bytes",
+        "referenced_count",
+        "orphan_count",
+        "orphan_bytes",
+        "directory",
+    }
+    # 引用数 + 孤儿数 必须等于总数，账要能对上
+    assert body["referenced_count"] + body["orphan_count"] == body["file_count"]
+    assert body["total_bytes"] >= 0
+
+
+def test_cleanup_removes_unreferenced_file(client: TestClient) -> None:
+    """传了但没发出去的文件，是真正该回收的那种孤儿。"""
+    url = _upload_image(client)
+
+    resp = client.post("/api/v1/media/cleanup", params={"grace_hours": 0})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] >= 1
+
+    assert client.get(url).status_code == 404
+
+
+def test_cleanup_keeps_referenced_file(client: TestClient, session_id: str) -> None:
+    """还被消息引用的文件绝不能删 —— 删了历史消息就裂图。"""
+    url = _upload_image(client)
+    _attach_to(client, session_id, url)
+
+    body = client.post("/api/v1/media/cleanup", params={"grace_hours": 0}).json()
+    assert body["kept_referenced"] >= 1
+    assert client.get(url).status_code == 200
+
+
+def test_cleanup_respects_grace_period(client: TestClient) -> None:
+    """宽限期保护的正是「刚上传、还在输入框里」的附件。"""
+    url = _upload_image(client)
+
+    body = client.post("/api/v1/media/cleanup", params={"grace_hours": 24}).json()
+    assert body["kept_recent"] >= 1
+    assert client.get(url).status_code == 200
+
+
+def test_delete_unreferenced_file(client: TestClient) -> None:
+    url = _upload_image(client)
+    name = _filename(url)
+
+    assert client.delete(f"/api/v1/media/{name}").status_code == 204
+    assert client.get(url).status_code == 404
+    # 再删一次：文件已经不在了
+    assert client.delete(f"/api/v1/media/{name}").status_code == 404
+
+
+def test_delete_referenced_file_rejected(client: TestClient, session_id: str) -> None:
+    url = _upload_image(client)
+    _attach_to(client, session_id, url)
+
+    resp = client.delete(f"/api/v1/media/{_filename(url)}")
+    assert resp.status_code == 409
+    assert "引用" in resp.json()["detail"]
+    # 拒绝之后文件必须还在
+    assert client.get(url).status_code == 200
+
+
+def test_delete_rejects_path_traversal(client: TestClient) -> None:
+    """删除接口同样不能变成「任意文件删除」。"""
+    for evil in ["..%2F..%2F.env", "..", "%2e%2e%2fmain.py", "%2e%2e%2f%2e%2e%2fpip.ini"]:
+        assert client.delete(f"/api/v1/media/{evil}").status_code == 404
+
+
+def test_deleting_session_removes_its_files(client: TestClient) -> None:
+    """会话都没了，它的附件不该继续占着磁盘。"""
+    sid = client.post(
+        "/api/v1/sessions", json={"type": "ai", "title": "临时会话"}
+    ).json()["id"]
+    url = _upload_image(client)
+    _attach_to(client, sid, url)
+    assert client.get(url).status_code == 200
+
+    assert client.delete(f"/api/v1/sessions/{sid}").status_code == 204
+    assert client.get(url).status_code == 404
+
+
+def test_cleanup_never_touches_files_outside_uploads(client: TestClient) -> None:
+    """清理只扫 uploads 目录，不能顺手删到别处。"""
+    from app.services import media_service
+
+    _upload_image(client)
+    # 在 uploads 的上一级放一个哨兵文件
+    root = media_service._upload_dir()
+    sentinel = root.parent / "sentinel-keep-me.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    try:
+        client.post("/api/v1/media/cleanup", params={"grace_hours": 0})
+        assert sentinel.exists()
+    finally:
+        sentinel.unlink(missing_ok=True)

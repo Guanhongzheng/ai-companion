@@ -8,6 +8,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as OrmSession
 
 from app.models.session import MessageModel, SessionModel
+from app.services import media_service
 from app.services.media_service import dump_attachments
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,15 @@ def rename_session(db: OrmSession, session_id: str, title: str) -> SessionModel:
 
 def delete_session(db: OrmSession, session_id: str) -> None:
     session = get_or_404(db, session_id)
+    # 先把这批附件记下来，再删会话 —— 会话一旦删掉就再也查不到引用了，
+    # 那些文件会永远留在 uploads 里，谁都找不到它们属于谁。
+    filenames = media_service.referenced_filenames(db, session_id=session_id)
     db.delete(session)  # cascade 会连带删掉 messages
     db.commit()
+
+    removed = sum(1 for name in filenames if media_service.delete_file(name))
+    if removed:
+        logger.info("删除会话 %s 时顺带清理了 %d 个附件文件", session_id, removed)
 
 
 def ensure_seed(db: OrmSession) -> None:

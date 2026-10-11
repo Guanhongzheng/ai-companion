@@ -31,6 +31,40 @@ class VisionOut(BaseModel):
     hint: str | None = None
 
 
+class MediaStatsOut(BaseModel):
+    """上传目录的占用情况。"""
+
+    #: 磁盘上的文件总数
+    file_count: int
+    #: 占用字节数
+    total_bytes: int
+    #: 仍被消息引用的文件数
+    referenced_count: int
+    #: 没有任何消息引用、可被清理的文件数
+    orphan_count: int
+    #: 可清理的字节数
+    orphan_bytes: int
+    #: uploads 目录的绝对路径，便于排查
+    directory: str
+
+
+class CleanupOut(BaseModel):
+    """一次清理的结果。分开记账，便于判断到底是「没得清」还是「被保护了」。"""
+
+    #: 扫描到的文件数
+    scanned: int
+    #: 实际删除数
+    deleted: int
+    #: 释放的字节数
+    freed_bytes: int
+    #: 仍被消息引用而保留
+    kept_referenced: int
+    #: 未超过宽限期而保留（多半是正在编辑、尚未发送的附件）
+    kept_recent: int
+    #: 删除失败数（文件被占用等）
+    failed: int
+
+
 class Attachment(BaseModel):
     """消息附件。存在 messages.attachments 这个 JSON 列里。"""
 

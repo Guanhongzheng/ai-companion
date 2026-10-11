@@ -1,12 +1,16 @@
-"""多媒体接口：上传图片与音频、语音转写、图片理解、读取已上传的文件。"""
+"""多媒体接口：上传图片与音频、语音转写、图片理解、读取与清理已上传的文件。"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session as OrmSession
 
 from app.core.overrides import ModelOverrideDep
+from app.db.session import get_db
 from app.schemas.media import (
+    CleanupOut,
+    MediaStatsOut,
     MediaUploadOut,
     TranscribeOut,
     VisionOut,
@@ -14,6 +18,8 @@ from app.schemas.media import (
 from app.services import asr_service, media_service, vision_service
 
 router = APIRouter()
+
+DbSession = Annotated[OrmSession, Depends(get_db)]
 
 
 def _bad(message: str) -> HTTPException:
@@ -102,6 +108,49 @@ async def describe(
             else "未配置支持视觉的模型。图片已保存，可以补充一句文字描述让 AI 理解。"
         ),
     )
+
+
+@router.get("/stats", response_model=MediaStatsOut, summary="上传目录占用统计")
+def stats(db: DbSession) -> MediaStatsOut:
+    """给「存储与缓存」面板用：存了多少、其中多少是可以清的。"""
+    return MediaStatsOut(**media_service.usage_stats(db))  # type: ignore[arg-type]
+
+
+@router.post("/cleanup", response_model=CleanupOut, summary="清理无引用的上传文件")
+def cleanup(
+    db: DbSession,
+    grace_hours: Annotated[float, Query(ge=0, le=24 * 365, description="宽限期（小时）")] = 1.0,
+) -> CleanupOut:
+    """删除没有任何消息引用、且已超过宽限期的文件。
+
+    默认留 1 小时宽限期：用户此刻可能正在编辑一条带图消息，
+    那张图还没有被任何消息引用，但绝不该被删掉。
+    后端启动时的自动清理用更长的宽限期（见 ``MEDIA_CLEANUP_GRACE_HOURS``）。
+    """
+    result = media_service.cleanup_orphans(db, grace_seconds=grace_hours * 3600)
+    return CleanupOut(**result.to_dict())
+
+
+@router.delete(
+    "/{filename}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除一个上传文件",
+)
+def delete_media(filename: str, db: DbSession) -> None:
+    """删除单个文件（用户在输入框里移除附件时调用）。
+
+    已被消息引用的文件拒绝删除 —— 否则历史消息里的图片会变成裂图，
+    那种「坏得很安静」的失败比占点磁盘空间糟糕得多。
+    """
+    if media_service.resolve_media_path(filename) is None:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if filename in media_service.referenced_filenames(db):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该文件已被消息引用，删除会影响历史记录",
+        )
+    if not media_service.delete_file(filename):
+        raise HTTPException(status_code=404, detail="文件不存在")
 
 
 @router.get("/{filename}", summary="读取已上传的文件")

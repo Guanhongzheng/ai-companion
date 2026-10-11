@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { absoluteUrl } from "@/lib/utils";
-import { mediaApi, toAttachment, type Attachment } from "../api/media-api";
+import { mediaApi, toAttachment, discardUpload, type Attachment } from "../api/media-api";
 
 const MAX_MB = 10;
 
@@ -69,7 +69,12 @@ export function ImagePicker({ attachments, onChange, disabled }: Props) {
     return () => window.removeEventListener("paste", onPaste);
   }, [handleFiles]);
 
-  const remove = (url: string) => onChange(attachments.filter((a) => a.url !== url));
+  // 移除即删除：这张图还没发出去，磁盘上就是一份孤儿文件。
+  // 删除是尽力的，失败也无妨 —— 后端的启动清理会兜底回收。
+  const remove = (url: string) => {
+    discardUpload(url);
+    onChange(attachments.filter((a) => a.url !== url));
+  };
 
   return (
     <div className="flex flex-col gap-1.5 px-4 pb-1">

@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     vision_model: str = ""
     #: 火山引擎（豆包）语音识别 Key，可选
     volcengine_access_key: str = ""
+    #: 启动时自动清理 uploads 里没有被任何消息引用的文件
+    media_auto_cleanup: bool = True
+    #: 自动清理的宽限期（小时）。比这更新的文件一律不动，
+    #: 避免误删用户刚上传、还没发出去的消息配图
+    media_cleanup_grace_hours: int = 24
 
     # ---- 实时 / MCP ----
     realtime_backend: str = "sse"
