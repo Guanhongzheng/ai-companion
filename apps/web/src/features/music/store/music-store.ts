@@ -35,6 +35,13 @@ interface MusicState {
 /** 复用同一个 audio 元素，切歌不重建（重建会导致 Web Audio source 失效） */
 let sharedAudio: HTMLAudioElement | null = null;
 
+/**
+ * 音乐服务不可用时的说明。
+ *
+ * 这段话**只打到控制台，不进界面**。它是给开发者看的（含 docker 命令与端口号），
+ * 而音乐是可选功能 —— 终端用户不需要知道怎么用 docker 起一个服务，
+ * 界面上只需要知道「音乐暂时不可用，且这不影响你使用别的东西」。
+ */
 const SERVICE_DOWN_MESSAGE =
   `音乐服务未启动（${MUSIC_API_BASE_URL}）。两种启动方式：` +
   `① docker compose --profile infra up -d music-api` +
@@ -84,7 +91,8 @@ export const useMusicStore = create<MusicState>()((set, get) => ({
     const ok = await musicApi.health();
     set({ available: ok });
     if (!ok) {
-      set({ error: SERVICE_DOWN_MESSAGE });
+      // 开发者信息只进控制台；界面上一行轻量提示就够了
+      console.info("[music] " + SERVICE_DOWN_MESSAGE);
     }
   },
 

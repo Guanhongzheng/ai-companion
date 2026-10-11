@@ -12,6 +12,7 @@ import { applyEmotionTheme } from "@/features/theme/lib/apply-emotion-theme";
 import { EmotionWallpaper } from "@/features/wallpaper/components/EmotionWallpaper";
 import { cn } from "@/lib/utils";
 import { ChatComposer } from "./ChatComposer";
+import { GroupSummaryPanel } from "./GroupSummaryCard";
 import { MessageList } from "./MessageList";
 import { SessionList } from "./SessionList";
 
@@ -134,8 +135,12 @@ export function ChatWindow() {
           </div>
         )}
 
+        {/* 群聊摘要与「想起了/记住了」同属消息区：
+            放输入框上方会被右下角浮动的 MusicDock 盖住 */}
+        <GroupSummaryPanel />
+
         {recalledMemories.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-emotion-primary/5 px-4 py-2 text-[11px]">
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border border-l-2 border-l-emotion-primary bg-emotion-primary/5 px-4 py-2 text-[11px]">
             <span className="text-muted-foreground">AI 想起了：</span>
             {recalledMemories.map((m) => (
               <span
@@ -153,7 +158,7 @@ export function ChatWindow() {
             所以它必然比正文晚一点出现 —— 但必须看得见，
             否则 AI 学到了东西用户毫无感知，抽取失败也一样静悄悄。 */}
         {learnedMemories.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-emotion-secondary/5 px-4 py-2 text-[11px]">
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border border-l-2 border-l-emotion-secondary bg-muted/40 px-4 py-2 text-[11px]">
             <span className="flex items-center gap-1 text-muted-foreground">
               <Brain className="h-3 w-3" />
               我记住了：
@@ -182,14 +187,21 @@ export function ChatWindow() {
         <MessageList />
         <ChatComposer
           sessionType={(active?.type ?? "ai") as "ai" | "direct" | "group"}
-          sessionId={activeSessionId}
           action={assistantAction}
           onActionChange={setAssistantAction}
         />
       </main>
 
-      {/* 情绪歌单：播放中的音频会被壁纸的频谱分析器接管 */}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-20">
+      {/*
+        情绪歌单：播放中的音频会被壁纸的频谱分析器接管。
+
+        ⚠️ 位置定在聊天区**右上角**而不是原来的右下角。
+        右下角会和输入框右上角重叠 —— 群聊的「总结群聊」按钮正好在那儿，
+        而 MusicDock 内部是 pointer-events-auto（它本身要可点），
+        结果它把那个按钮整个挡住，真实用户点不动。
+        这个问题是通过浏览器端到端点击测试发现的，截图上看不出异常。
+      */}
+      <div className="pointer-events-none fixed right-4 top-16 z-20">
         <MusicDock />
       </div>
     </div>

@@ -1,6 +1,7 @@
 """应用入口：创建 FastAPI 实例、挂中间件、注册路由。"""
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -47,9 +48,26 @@ def _auto_cleanup_media(db: OrmSession) -> None:
         )
 
 
+def _tune_litellm() -> None:
+    """关掉 LiteLLM 的模型价格表拉取。
+
+    LiteLLM 第一次调用时会去 GitHub 拉一份价格表，用来算 token 费用。
+    拉不到就重试三次才降级到本地备份 —— 实测在有 HTTPS 代理的机器上
+    （自签证书导致 SSL 验证失败）这段重试要花掉 **十几秒**，
+    而这十几秒全部算在用户的第一次对话上。
+
+    我们不需要按价计费，所以直接关掉。代价只是
+    ``/settings/status`` 之类的接口拿不到费用估算，
+    对本地部署无影响。想恢复的话把 ``LITELLM_LOCAL_MODEL_COST_MAP`` 设成 1。
+    """
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    os.environ.setdefault("LITELLM_ERROR_RETRY_DELAY", "0")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """启动/关闭钩子：建表、灌示例数据、初始化模型与向量库客户端。"""
+    _tune_litellm()
     init_db()
     with SessionLocal() as db:
         ensure_seed(db)

@@ -9,7 +9,7 @@
 
 import { Languages, MessageSquareQuote, Sparkles, Wand2 } from "lucide-react";
 
-import { GroupSummaryCard } from "@/features/chat/components/GroupSummaryCard";
+import { GroupSummaryButton } from "@/features/chat/components/GroupSummaryCard";
 import type { AssistantAction } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
 
@@ -77,16 +77,10 @@ export interface MentionBarProps {
   waiting: boolean;
   /** 点击后在输入框插入 @AI */
   onMention: () => void;
-  /** 当前群聊会话 ID，「总结群聊」用它调接口 */
-  sessionId: string;
 }
 
 /** 群聊的 @ 提示栏 + 总结入口 */
-export function GroupMentionBar({
-  waiting,
-  onMention,
-  sessionId,
-}: MentionBarProps) {
+export function GroupMentionBar({ waiting, onMention }: MentionBarProps) {
   return (
     <div className="flex items-center justify-between gap-2 border-t border-border bg-card/40 px-4 py-2">
       <p
@@ -98,7 +92,7 @@ export function GroupMentionBar({
         {waiting ? "AI 听到了，需要 @ 它才会回复" : "AI 只在被 @ 时才回复，不会抢话"}
       </p>
       <div className="flex shrink-0 items-center gap-1.5">
-        <GroupSummaryCard sessionId={sessionId} />
+        <GroupSummaryButton />
         <button
           type="button"
           onClick={onMention}

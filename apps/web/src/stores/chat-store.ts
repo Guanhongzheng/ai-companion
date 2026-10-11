@@ -16,6 +16,7 @@ import { readByokHeaders } from "@/lib/api-client";
 import { streamPost } from "@/lib/sse-client";
 import { chatApi } from "@/features/chat/api/chat-api";
 import type { LearnedMemory, RecalledMemory } from "@/features/memory/types";
+import type { GroupSummary } from "@/features/chat/types";
 import {
   toMessage,
   toSession,
@@ -47,8 +48,13 @@ interface ChatState {
   mocked: boolean;
   /** 本轮召回的长期记忆，用来在界面上展示「AI 想起了什么」 */
   recalledMemories: RecalledMemory[];
-  /** 本轮新记住的记忆，展示「AI 记住了：xxx」 */
+  /** 本轮新记住的记忆，展示「我记住了：xxx」 */
   learnedMemories: LearnedMemory[];
+  /** 群聊摘要。渲染在消息区而非输入框附近 —— 那里被 MusicDock 挡住过 */
+  groupSummary: GroupSummary | null;
+  summarizeLoading: boolean;
+  /** 摘要卡片是否展开（与内容分开，切会话时收起） */
+  groupSummaryOpen: boolean;
   /** 本轮意图判定结果 */
   lastAction: StreamActionPayload["action"];
   /** 群聊里 AI 是否在等你 @ 它 */
@@ -65,6 +71,9 @@ interface ChatState {
     attachments?: Attachment[],
   ) => Promise<void>;
   clearError: () => void;
+  /** 请求群聊摘要。失败只提示，不清空已有摘要 */
+  runSummary: () => Promise<void>;
+  closeSummary: () => void;
 }
 
 export const useChatStore = create<ChatState>()((set, get) => ({
@@ -79,6 +88,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   mocked: false,
   recalledMemories: [],
   learnedMemories: [],
+  groupSummary: null,
+  summarizeLoading: false,
+  groupSummaryOpen: false,
   lastAction: "chat",
   waitingForMention: false,
   error: null,
@@ -174,6 +186,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       error: null,
       recalledMemories: [],
       learnedMemories: [],
+      groupSummary: null,
+      groupSummaryOpen: false,
       lastAction: action ?? "chat",
       waitingForMention: false,
       messages: {
@@ -288,6 +302,27 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   clearError() {
     set({ error: null });
+  },
+
+  async runSummary() {
+    const sessionId = get().activeSessionId;
+    if (!sessionId) return;
+    const session = get().sessions.find((s) => s.id === sessionId);
+    if (session?.type !== "group") return;
+
+    set({ summarizeLoading: true, groupSummaryOpen: true });
+    try {
+      set({ groupSummary: await chatApi.summarize(sessionId) });
+    } catch (err) {
+      // 摘要失败不该清掉已有结果 —— 用户可能只是想再看一遍
+      set({ error: describe(err) });
+    } finally {
+      set({ summarizeLoading: false });
+    }
+  },
+
+  closeSummary() {
+    set({ groupSummaryOpen: false });
   },
 }));
 

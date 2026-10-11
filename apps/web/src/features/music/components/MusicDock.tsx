@@ -7,8 +7,8 @@
  * 播放中的音频会被壁纸的 Web Audio 分析器接管做可视化。
  */
 
-import { Music4, Pause, Play, RefreshCw, X } from "lucide-react";
-import { useEffect } from "react";
+import { ChevronUp, Music4, Pause, Play, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { useEmotionTokens } from "@/features/theme/hooks/use-emotion-tokens";
 import { cn } from "@/lib/utils";
@@ -24,13 +24,15 @@ function formatDuration(ms: number): string {
 
 export function MusicDock() {
   const tokens = useEmotionTokens();
+  // 默认收起。音乐是可选功能，不该在每次页面加载时就发起探测请求 ——
+  // 那会在控制台留下一串 ERR_CONNECTION_REFUSED，用户看到的是「系统有错」。
+  const [open, setOpen] = useState(false);
   const {
     available,
     tracks,
     currentId,
     playing,
     loading,
-    error,
     audioElement,
     probe,
     searchByEmotion,
@@ -39,10 +41,10 @@ export function MusicDock() {
     setPlaying,
   } = useMusicStore();
 
-  // 首次挂载探测服务；同步 audio 播放状态
+  // 只在用户展开时才探测服务
   useEffect(() => {
-    void probe();
-  }, [probe]);
+    if (open) void probe();
+  }, [open, probe]);
 
   useEffect(() => {
     const el = audioElement;
@@ -62,6 +64,20 @@ export function MusicDock() {
 
   const current = tracks.find((t) => t.id === currentId);
 
+  // 收起态：只留一个小圆钮，不探测服务、不占空间
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="打开情绪歌单"
+        className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 shadow-lg backdrop-blur transition-colors hover:bg-card"
+      >
+        <Music4 className="h-4 w-4" style={{ color: tokens.primaryColor }} />
+      </button>
+    );
+  }
+
   return (
     <section className="pointer-events-auto w-72 rounded-2xl border border-border bg-card/80 p-3 shadow-lg backdrop-blur">
       <header className="mb-2 flex items-center justify-between">
@@ -70,6 +86,14 @@ export function MusicDock() {
           情绪歌单
           <span className="text-[10px] font-normal text-muted-foreground">· {tokens.label}</span>
         </h3>
+        <button
+          type="button"
+          title="收起"
+          onClick={() => setOpen(false)}
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           title="按当前情绪重新推荐"
@@ -106,10 +130,15 @@ export function MusicDock() {
         </div>
       </div>
 
-      {available === false && error && (
-        <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-destructive/10 p-2 text-[11px] leading-relaxed text-destructive">
-          <span className="flex-1">{error}</span>
-          <X className="mt-0.5 h-3 w-3 shrink-0" />
+      {/*
+        服务没起时只给一行轻量提示。
+        原来这里直接渲染 store 里的 error —— 那段文本是给开发者看的
+        （含 docker 命令和端口号），整块红横幅糊在聊天界面右下角，
+        既抢眼又对终端用户毫无意义。音乐本来就是可选功能。
+      */}
+      {available === false && (
+        <p className="mt-2 rounded-lg bg-muted/60 px-2 py-1.5 text-[11px] text-muted-foreground">
+          音乐服务未启动，不影响对话
         </p>
       )}
 

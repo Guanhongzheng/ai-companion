@@ -34,12 +34,20 @@ interface Props {
 type Mode = "idle" | "listening" | "uploading";
 
 export function VoiceInput({ onText, onAttachment, disabled }: Props) {
-  const supported = hasSpeechRecognition();
+  // 🔴 能力探测必须等挂载后再做。
+  // `hasSpeechRecognition()` 读的是浏览器 API：SSR 阶段必然返回 false，
+  // 客户端 hydrate 后可能变 true —— 服务端渲染出「需服务端配置」、
+  // 客户端是「语音输入」，两套文案不一致就是一条 hydration 报错。
+  // 所以 mounted 之前统一用中性文案，挂载后再切真实能力。
+  const [mounted, setMounted] = useState(false);
+  const supported = mounted && hasSpeechRecognition();
   const [mode, setMode] = useState<Mode>("idle");
   const [hint, setHint] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     return () => {
@@ -155,7 +163,11 @@ export function VoiceInput({ onText, onAttachment, disabled }: Props) {
         onClick={() => void handleToggle()}
         disabled={disabled || busy}
         title={
-          supported ? "语音输入" : "语音输入（需服务端配置识别能力）"
+          !mounted
+            ? "语音输入"
+            : supported
+              ? "语音输入"
+              : "语音输入（浏览器不支持，改用服务端识别）"
         }
         aria-label={mode === "listening" ? "停止录音" : "语音输入"}
         className={cn(
