@@ -58,7 +58,8 @@ export function ChatComposer({ sessionType, action, onActionChange }: Props) {
         <ImagePicker attachments={attachments} onChange={setAttachments} disabled={sending} />
       )}
 
-      <div className="px-4 pb-3">
+      {/* pb 用 safe-area：手机上底部有 Home 指示条，压住输入框很难受 */}
+      <div className="px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pb-3">
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           <ImagePicker attachments={attachments} onChange={setAttachments} disabled={sending} />
           <VoiceInput

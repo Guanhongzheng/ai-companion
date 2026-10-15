@@ -14,7 +14,12 @@ const TYPE_ICON = {
   group: Users,
 } as const satisfies Record<Session["type"], typeof Bot>;
 
-export function SessionList() {
+interface Props {
+  /** 移动端点完会话后关闭抽屉 */
+  onNavigate?: () => void;
+}
+
+export function SessionList({ onNavigate }: Props = {}) {
   const sessions = useChatStore((s) => s.sessions);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const loading = useChatStore((s) => s.loading);
@@ -33,7 +38,7 @@ export function SessionList() {
   );
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-card/40">
+    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-card/95 backdrop-blur lg:bg-card/40">
       <header className="flex items-center justify-between px-4 py-3">
         <h2 className="text-sm font-medium">会话</h2>
         <div className="flex gap-1">
@@ -44,7 +49,10 @@ export function SessionList() {
                 key={type}
                 type="button"
                 title={`新建${SESSION_TYPE_META[type].label}`}
-                onClick={() => void createSession(type)}
+                onClick={() => {
+                  void createSession(type);
+                  onNavigate?.();
+                }}
                 className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <Icon className="h-4 w-4" />
@@ -87,7 +95,10 @@ export function SessionList() {
                   >
                     <button
                       type="button"
-                      onClick={() => void selectSession(session.id)}
+                      onClick={() => {
+                        void selectSession(session.id);
+                        onNavigate?.();
+                      }}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
                       <span

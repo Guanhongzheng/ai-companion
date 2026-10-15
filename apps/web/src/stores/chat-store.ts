@@ -17,6 +17,7 @@ import { streamPost } from "@/lib/sse-client";
 import { chatApi } from "@/features/chat/api/chat-api";
 import type { LearnedMemory, RecalledMemory } from "@/features/memory/types";
 import type { GroupSummary } from "@/features/chat/types";
+import { currentIdentity, useIdentityStore } from "@/features/group/store/identity-store";
 import {
   toMessage,
   toSession,
@@ -159,11 +160,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     // 只有图没有字也算一句话；两者都没有才不发
     if ((!trimmed && files.length === 0) || !activeSessionId || get().sending) return;
 
+    // 群聊要带上「我是谁」，否则后端记成 local-user，
+    // 群聊总结的参与者列表就永远只有一个人
+    const session = get().sessions.find((s) => s.id === activeSessionId);
+    const isGroup = session?.type === "group";
+    const identity = currentIdentity(useIdentityStore.getState().identityId);
+
     const userMessage: Message = {
       id: `local-${Date.now()}`,
       sessionId: activeSessionId,
       senderType: "user",
-      senderId: LOCAL_USER_ID,
+      senderId: isGroup ? identity.id : LOCAL_USER_ID,
+      senderLabel: isGroup ? identity.name : undefined,
       content: trimmed || "（图片）",
       contentType: files.some((f) => f.kind === "image") ? "image" : "text",
       attachments: files,
@@ -223,7 +231,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         absoluteUrl(chatApi.streamUrl),
         {
           session_id: activeSessionId,
-          messages: [{ role: "user", content: trimmed, attachments: files }],
+          messages: [
+            {
+              role: "user",
+              content: trimmed,
+              attachments: files,
+              ...(isGroup ? { sender_id: identity.id, sender_name: identity.name } : {}),
+            },
+          ],
           ...(action ? { action } : {}),
         },
         {

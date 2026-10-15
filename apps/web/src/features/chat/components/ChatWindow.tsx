@@ -1,14 +1,14 @@
 "use client";
 
 import { emotionThemeOf } from "@ai-companion/shared";
-import { AlertCircle, Brain, KeyRound, Settings, Sparkles, Users, X } from "lucide-react";
+import { AlertCircle, Brain, KeyRound, Menu, Settings, Sparkles, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useChatStore, type AssistantAction } from "@/stores/chat-store";
 import { MusicDock } from "@/features/music/components/MusicDock";
 import { currentModelName, useSettingsStore } from "@/features/settings/store/settings-store";
-import { applyEmotionTheme } from "@/features/theme/lib/apply-emotion-theme";
+import { applyEmotionTheme, watchViewport } from "@/features/theme/lib/apply-emotion-theme";
 import { EmotionWallpaper } from "@/features/wallpaper/components/EmotionWallpaper";
 import { cn } from "@/lib/utils";
 import { ChatComposer } from "./ChatComposer";
@@ -38,9 +38,13 @@ export function ChatWindow() {
   // 情绪一变，主题色 / 壁纸渐变立刻跟随
   useEffect(() => {
     applyEmotionTheme(emotion);
+    // 屏幕尺寸变化后重算：气泡宽度是行内样式，不会自己更新
+    watchViewport(emotion);
   }, [emotion]);
 
   const [assistantAction, setAssistantAction] = useState<AssistantAction | null>(null);
+  // 移动端侧栏抽屉。桌面端（lg 以上）侧栏常驻，这个状态不起作用。
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const byokEnabled = useSettingsStore((s) => s.enabled);
   const byokProvider = useSettingsStore((s) => s.providerId);
   const byokModelName = useSettingsStore((s) => s.modelName);
@@ -54,10 +58,46 @@ export function ChatWindow() {
       {/* 动态壁纸：Three.js 粒子场，WebGL 不可用时自动退回 CSS Gradient */}
       <EmotionWallpaper />
 
-      <SessionList />
+      {/*
+        🔴 侧栏在移动端是**抽屉**，不是常驻列。
+        原来它是 `w-72 shrink-0` 固定宽度且没有断点 —— 手机上直接占满 288px
+        且无法收起，聊天区被完全挤出屏幕，整站等于不可用。
+
+        ⚠️ 遮罩必须和抽屉**平级**，不能塞进抽屉容器里。
+        塞进去时父容器的 z-30 会建立层叠上下文，遮罩的 -z-10 就被压到
+        这个上下文的最底部，结果被 <main> 拦截 —— 遮罩看得见但点不动，
+        抽屉关不掉。这正是浏览器点击测试抓出来的。
+        */}
+      {drawerOpen && (
+        <button
+          type="button"
+          aria-label="关闭会话列表"
+          onClick={() => setDrawerOpen(false)}
+          className="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
+      <div
+        className={cn(
+          "fixed inset-y-0 left-0 z-30 lg:static lg:z-auto",
+          "transition-transform duration-200 ease-out",
+          drawerOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        )}
+      >
+        <SessionList onNavigate={() => setDrawerOpen(false)} />
+      </div>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 backdrop-blur">
+        <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5 backdrop-blur sm:px-4 sm:py-3">
+          {/* 汉堡按钮只在移动端出现 */}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="打开会话列表"
+            className="-ml-1 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
           <div className="min-w-0">
             <h1 className="truncate text-sm font-medium">{active?.title ?? "对话中枢"}</h1>
             <p className="truncate text-xs text-muted-foreground">
@@ -201,7 +241,7 @@ export function ChatWindow() {
         结果它把那个按钮整个挡住，真实用户点不动。
         这个问题是通过浏览器端到端点击测试发现的，截图上看不出异常。
       */}
-      <div className="pointer-events-none fixed right-4 top-16 z-20">
+      <div className="pointer-events-none fixed right-4 top-16 z-10">
         <MusicDock />
       </div>
     </div>

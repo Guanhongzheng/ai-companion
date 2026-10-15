@@ -10,6 +10,7 @@
 import { Languages, MessageSquareQuote, Sparkles, Wand2 } from "lucide-react";
 
 import { GroupSummaryButton } from "@/features/chat/components/GroupSummaryCard";
+import { IdentityPicker } from "@/features/group/components/IdentityPicker";
 import type { AssistantAction } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
 
@@ -82,21 +83,25 @@ export interface MentionBarProps {
 /** 群聊的 @ 提示栏 + 总结入口 */
 export function GroupMentionBar({ waiting, onMention }: MentionBarProps) {
   return (
-    <div className="flex items-center justify-between gap-2 border-t border-border bg-card/40 px-4 py-2">
-      <p
-        className={cn(
-          "text-[11px] transition-colors",
-          waiting ? "text-emotion-primary" : "text-muted-foreground",
-        )}
-      >
-        {waiting ? "AI 听到了，需要 @ 它才会回复" : "AI 只在被 @ 时才回复，不会抢话"}
-      </p>
-      <div className="flex shrink-0 items-center gap-1.5">
+    <div className="flex flex-col gap-1.5 border-t border-border bg-card/40 px-4 py-2">
+      {/* 身份选择器单独一行：提示语说的是 AI 的行为，这里说的是「我是谁」，两件事 */}
+      <div className="flex items-center justify-between gap-2">
+        <IdentityPicker />
         <GroupSummaryButton />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <p
+          className={cn(
+            "text-[11px] transition-colors",
+            waiting ? "text-emotion-primary" : "text-muted-foreground",
+          )}
+        >
+          {waiting ? "AI 听到了，需要 @ 它才会回复" : "AI 只在被 @ 时才回复，不会抢话"}
+        </p>
         <button
           type="button"
           onClick={onMention}
-          className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-emotion-primary/15 hover:text-foreground"
+          className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-emotion-primary/15 hover:text-foreground"
         >
           @ AI
         </button>

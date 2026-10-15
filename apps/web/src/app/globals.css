@@ -49,7 +49,10 @@
     /* ★ 情绪布局 */
     --emotion-radius: 0.875rem;
     --emotion-density: 1;
-    --emotion-bubble-width: 42%;
+    /* 气泡宽度兜底值。真正生效的是文件末尾的窄屏覆盖 ——
+       apply-emotion-theme.ts 会在运行时按情绪注入 0.38–0.48，
+       那是照桌面端调的，手机上会变成一字一行。 */
+    --emotion-bubble-width: 82%;
 
     /* ★ 情绪动效 */
     --emotion-motion-scale: 1;

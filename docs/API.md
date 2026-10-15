@@ -39,6 +39,11 @@ Base URL：`http://localhost:8000`
 前置条件是**消息要带发言人**：请求里传 `sender_id`（`u_alice`）与可选的
 `sender_name`（「张三」，优先使用）。不传时默认是「我」。
 
+界面上通过群聊栏的身份选择器切换当前身份（存在 localStorage），
+选完发出的消息都会带上这个人的名字。
+**「我」用 `sender_id="local-user"`** —— 后端对这个 id 有特殊处理，
+兜底推导时显示成「我」而不是 "me"。
+
 ```json
 { "session_id": "...", "messages": [
   { "role": "user", "content": "我来出数据部分", "sender_id": "u_zhang", "sender_name": "张三" }

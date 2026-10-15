@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function SettingsPage() {
   return (
-    <main className="min-h-screen bg-background px-4">
+    <main className="min-h-screen bg-background px-3 pb-[env(safe-area-inset-bottom)] sm:px-4">
       <SettingsPanel />
     </main>
   );
