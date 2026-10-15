@@ -27,6 +27,7 @@ Base URL：`http://localhost:8000`
 | GET | `/api/v1/sessions` | 会话列表（置顶优先、按最近活跃排序） |
 | POST | `/api/v1/sessions` | 创建会话，body `{ type, title, memberCount? }` |
 | GET | `/api/v1/sessions/{id}/messages` | 消息历史 |
+| DELETE | `/api/v1/sessions/{id}/messages/{message_id}` | 删单条消息（顺带清理其附件文件） |
 | POST | `/api/v1/sessions/{id}/summarize` | **群聊总结**：议题 / 结论 / 待办 / 参与者 |
 | PATCH | `/api/v1/sessions/{id}` | 重命名，body `{ title }` |
 | DELETE | `/api/v1/sessions/{id}` | 删除会话（级联删除消息） |

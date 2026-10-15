@@ -57,6 +57,24 @@ def rename_session(session_id: str, payload: SessionRename, db: DbSession) -> Se
 
 
 @router.delete(
+    "/{session_id}/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除单条消息",
+)
+def delete_message(session_id: str, message_id: str, db: DbSession) -> None:
+    """删一条消息。
+
+    「重新生成」要用它：用户对回复不满意时，得先把旧回复删掉才能重新问一遍，
+    否则两条回复会一起留在上下文里，模型看到自己说过两次。
+
+    删 AI 的回复时连带删掉它引用的上传文件 —— 不然文件会变成孤儿，
+    只能等启动时的自动清理（默认 24h 宽限期）。
+    """
+    session_service.get_or_404(db, session_id)
+    session_service.delete_message(db, session_id, message_id)
+
+
+@router.delete(
     "/{session_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除会话"
 )
 def delete_session(session_id: str, db: DbSession) -> None:

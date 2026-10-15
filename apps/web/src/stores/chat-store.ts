@@ -72,6 +72,10 @@ interface ChatState {
     attachments?: Attachment[],
   ) => Promise<void>;
   clearError: () => void;
+  /** 删一条消息 */
+  removeMessage: (messageId: string) => Promise<void>;
+  /** 重新生成 AI 回复：删掉旧回复，把上一条用户消息再发一遍 */
+  regenerate: () => Promise<void>;
   /** 请求群聊摘要。失败只提示，不清空已有摘要 */
   runSummary: () => Promise<void>;
   closeSummary: () => void;
@@ -317,6 +321,60 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   clearError() {
     set({ error: null });
+  },
+
+  async removeMessage(messageId) {
+    const sessionId = get().activeSessionId;
+    if (!sessionId) return;
+    // 先本地移除：接口往返几百毫秒，UI 里留着会让人觉得没点动
+    const cached = (get().messages[sessionId] ?? []).find((m) => m.id === messageId);
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [sessionId]: (state.messages[sessionId] ?? []).filter((m) => m.id !== messageId),
+      },
+    }));
+    try {
+      await chatApi.deleteMessage(sessionId, messageId);
+    } catch (error) {
+      // 失败要回滚 —— 界面删了但服务端没删，等于两边不一致
+      if (cached) {
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [sessionId]: [...(state.messages[sessionId] ?? []), cached],
+          },
+        }));
+      }
+      set({ error: describe(error) });
+    }
+  },
+
+  async regenerate() {
+    const sessionId = get().activeSessionId;
+    if (!sessionId || get().sending) return;
+    const list = get().messages[sessionId] ?? [];
+
+    // 找到最后一条 AI 回复与它上面的用户消息
+    const lastAi = [...list].reverse().find((m) => m.senderType === "ai");
+    if (!lastAi) return;
+    const before = list.slice(0, list.indexOf(lastAi)).reverse();
+    const lastUser = before.find((m) => m.senderType === "user");
+    if (!lastUser) return;
+
+    // 两条都要删：旧回复留着，模型会在上下文里看到自己说过两次
+    await get().removeMessage(lastAi.id);
+    if (lastUser.id.startsWith("local-")) {
+      set((state) => ({
+        messages: {
+          ...state.messages,
+          [sessionId]: (state.messages[sessionId] ?? []).filter((m) => m.id !== lastUser.id),
+        },
+      }));
+    } else {
+      await get().removeMessage(lastUser.id);
+    }
+    await get().sendMessage(lastUser.content);
   },
 
   async runSummary() {

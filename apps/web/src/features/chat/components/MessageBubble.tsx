@@ -3,8 +3,10 @@
 import { emotionThemeOf, type Message } from "@ai-companion/shared";
 import { motion } from "framer-motion";
 
+import { useChatStore } from "@/stores/chat-store";
 import { useEmotionMotion } from "@/features/theme/hooks/use-emotion-motion";
 import { absoluteUrl, cn } from "@/lib/utils";
+import { MessageActions } from "./MessageActions";
 
 interface Props {
   message: Message;
@@ -21,6 +23,12 @@ export function MessageBubble({ message, isGroup = false }: Props) {
   const emotion = message.emotion;
   const emotionTheme = emotion ? emotionThemeOf(emotion) : null;
 
+  const removeMessage = useChatStore((s) => s.removeMessage);
+  const regenerate = useChatStore((s) => s.regenerate);
+  const sending = useChatStore((s) => s.sending);
+  // 流式生成中不给操作 —— 那条消息还没定型
+  const actionable = !message.streaming;
+
   return (
     <motion.div
       initial="hidden"
@@ -28,7 +36,7 @@ export function MessageBubble({ message, isGroup = false }: Props) {
       variants={variants}
       transition={transition}
       className={cn(
-        "flex w-full gap-2 px-4 py-emotion",
+        "group flex w-full gap-1 px-4 py-emotion",
         alignRight ? "justify-end" : "justify-start",
       )}
     >
@@ -76,8 +84,28 @@ export function MessageBubble({ message, isGroup = false }: Props) {
           </ul>
         )}
 
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
-        {message.streaming && (
+        {/*
+          🔴 内容还没来时必须有明确的「正在思考」反馈。
+          实测首字延迟 330–580ms，此前这段时间气泡里只有一根几乎看不见的
+          光标竖线 —— 用户分不清是「没发出去」还是「卡了」。
+          这里用三点动画 + 文案，占位高度与正常气泡一致，不会有布局跳动。
+        */}
+        {message.streaming && !message.content ? (
+          <span className="flex items-center gap-1.5 text-sm opacity-80">
+            <span className="sr-only">AI 正在思考</span>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                aria-hidden
+                className="animate-thinking inline-block h-1.5 w-1.5 rounded-full bg-current"
+                style={{ animationDelay: `${i * 160}ms` }}
+              />
+            ))}
+          </span>
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        )}
+        {message.streaming && message.content && (
           <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-current align-text-bottom" />
         )}
         {!isUser && emotionTheme && (
@@ -92,6 +120,15 @@ export function MessageBubble({ message, isGroup = false }: Props) {
         )}
         </div>
       </div>
+
+      {actionable && (
+        <MessageActions
+          copyText={message.content}
+          onRegenerate={!isUser ? () => void regenerate() : undefined}
+          onDelete={() => void removeMessage(message.id)}
+          regenerating={!isUser && sending}
+        />
+      )}
     </motion.div>
   );
 }

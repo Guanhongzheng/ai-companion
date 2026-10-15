@@ -28,6 +28,12 @@ export const chatApi = {
   listMessages: (sessionId: string) =>
     request<MessageDto[]>(`/api/v1/sessions/${sessionId}/messages`),
 
+  /** 删一条消息。重新生成前要先删掉旧回复，否则模型会看到自己说过两次 */
+  deleteMessage: (sessionId: string, messageId: string) =>
+    request<void>(`/api/v1/sessions/${sessionId}/messages/${messageId}`, {
+      method: "DELETE",
+    }),
+
   /** 群聊总结。模型不可用时后端会退回规则版，照样返回结果 */
   summarize: (sessionId: string) =>
     request<GroupSummary>(`/api/v1/sessions/${sessionId}/summarize`, { method: "POST" }),

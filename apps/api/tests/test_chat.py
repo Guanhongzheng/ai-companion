@@ -170,3 +170,41 @@ def test_no_learned_event_for_small_talk(client: TestClient, session_id: str) ->
     )
     names = [name for name, _ in parse_sse(resp.text)]
     assert "learned" not in names
+
+
+# ---------------------------------------------------------------- 消息操作
+
+
+def test_delete_message(client: TestClient, session_id: str) -> None:
+    """「重新生成」依赖它：得先删掉旧回复，否则模型会看到自己说过两次。"""
+    before = client.get(f"/api/v1/sessions/{session_id}/messages").json()
+    assert before, "前提：会话里得有消息"
+
+    target = before[-1]["id"]
+    resp = client.delete(f"/api/v1/sessions/{session_id}/messages/{target}")
+    assert resp.status_code == 204
+
+    after = client.get(f"/api/v1/sessions/{session_id}/messages").json()
+    assert all(m["id"] != target for m in after), "消息没删掉"
+    assert len(after) == len(before) - 1
+
+
+def test_delete_message_rejects_cross_session(client: TestClient, session_id: str) -> None:
+    """🔴 不能删别的会话里的消息 —— 路径里的 session_id 必须真的生效。
+
+    只按 message_id 查的话，用户改一下 URL 就能删掉任意消息。
+    """
+    other = client.post(
+        "/api/v1/sessions", json={"type": "ai", "title": "隔离测试"}
+    ).json()["id"]
+    try:
+        msgs = client.get(f"/api/v1/sessions/{session_id}/messages").json()
+        target = msgs[-1]["id"]
+        resp = client.delete(f"/api/v1/sessions/{other}/messages/{target}")
+        assert resp.status_code == 404, "跨会话删消息应该 404"
+    finally:
+        client.delete(f"/api/v1/sessions/{other}")
+
+
+def test_delete_unknown_message_404(client: TestClient, session_id: str) -> None:
+    assert client.delete(f"/api/v1/sessions/{session_id}/messages/nope").status_code == 404

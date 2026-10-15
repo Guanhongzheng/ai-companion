@@ -129,3 +129,49 @@
     padding-bottom: calc(0.375rem * var(--emotion-density));
   }
 }
+
+/*
+ * 「正在思考」的三点动画：横向依次点亮的波浪，比上下 bounce 更像在打字。
+ * 用自定义 keyframes 而不是 animate-bounce —— 后者三点会同时上下弹，
+ * 看起来像整体在抖，而不是「一个一个地想」。
+ */
+@keyframes thinking-wave {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@layer utilities {
+  .animate-thinking {
+    animation: thinking-wave 1.3s ease-in-out infinite;
+  }
+}
+
+/*
+ * 无障碍：尊重系统的「减少动态效果」设置。
+ * 此前项目里完全没有这层处理 —— 前庭功能障碍的用户看到
+ * 无限循环的弹跳会非常不适。这个开关是系统级的，不该被应用忽略。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* 思考中的三点改成静态不同透明度 —— 仍然传达「在动」，但不晃 */
+  .animate-thinking {
+    animation: none !important;
+    opacity: 0.4;
+  }
+}

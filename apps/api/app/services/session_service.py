@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session as OrmSession
 
 from app.models.session import MessageModel, SessionModel
 from app.services import media_service
-from app.services.media_service import dump_attachments
+from app.services.media_service import dump_attachments, parse_attachments
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,32 @@ def delete_session(db: OrmSession, session_id: str) -> None:
     removed = sum(1 for name in filenames if media_service.delete_file(name))
     if removed:
         logger.info("删除会话 %s 时顺带清理了 %d 个附件文件", session_id, removed)
+
+
+def delete_message(db: OrmSession, session_id: str, message_id: str) -> None:
+    """删一条消息，顺带清掉它上传的文件。
+
+    文件回收的逻辑和 ``delete_session`` 一样：**先记引用再删记录**，
+    记录一删就再也查不到文件属于谁，那些文件会永远留在 uploads 里。
+    """
+    from fastapi import HTTPException
+
+    message = db.execute(
+        select(MessageModel).where(
+            MessageModel.id == message_id, MessageModel.session_id == session_id
+        )
+    ).scalar_one_or_none()
+    if message is None:
+        raise HTTPException(status_code=404, detail="消息不存在")
+
+    filenames = parse_attachments(message.attachments)
+    names = [f.get("filename") for f in filenames if isinstance(f, dict) and f.get("filename")]
+    db.delete(message)
+    db.commit()
+
+    removed = sum(1 for name in names if name and media_service.delete_file(name))
+    if removed:
+        logger.info("删除消息 %s 时顺带清理了 %d 个附件文件", message_id, removed)
 
 
 def ensure_seed(db: OrmSession) -> None:
